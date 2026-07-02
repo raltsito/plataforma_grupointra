@@ -7,82 +7,51 @@
     <link rel="stylesheet" href="{% static 'accounts/css/login.css' %}">
 </head>
 <body>
-    <!-- Pantalla principal del login INTRA -->
     <main class="login-page">
-
-        <!-- Sección izquierda: logotipo e identidad visual -->
         <section class="brand-section">
-            <div class="brain-icon">
-                INTRA
-            </div>
-
-           <h2 class="brand-name">Grupo Intra</h2>
+            <div class="brain-icon">INTRA</div>
+            <h2 class="brand-name">Grupo Intra</h2>
         </section>
 
-        <!-- Sección derecha: formulario de acceso -->
-       <section class="login-card">
-    <h1>BIENVENIDO</h1>
+        <section class="login-card">
+            <h1>BIENVENIDO</h1>
 
-    {% if messages %}
-        <div class="messages">
-            {% for message in messages %}
-                <p class="message-error">{{ message }}</p>
-            {% endfor %}
-        </div>
-    {% endif %}
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <p class="message-error">{{ message }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
 
-    <form class="login-form" method="post">
-        {% csrf_token %}
-            
             <form class="login-form" method="post">
                 {% csrf_token %}
 
                 <div class="form-group">
                     <label for="username">USUARIO</label>
-
                     <div class="input-with-icon">
                         <span class="input-icon">
-                            <svg viewBox="0 0 24 24">
-                                <circle cx="12" cy="8" r="4"></circle>
-                                <path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"></path>
-                            </svg>
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"></path></svg>
                         </span>
-
-                        <input
-                            type="text"
-                            id="username"
-                            name="username"
-                            placeholder="Ingrese su usuario"
-                        >
+                        <input type="text" id="username" name="username" placeholder="Ingrese su usuario" required>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label for="password">PASSWORD</label>
-
                     <div class="input-with-icon">
                         <span class="input-icon">
-                            <svg viewBox="0 0 24 24">
-                                <rect x="5" y="10" width="14" height="10" rx="2"></rect>
-                                <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
-                            </svg>
+                            <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
                         </span>
-
-                        <input
-                            type="password"
-                            id="password"
-                            name="password"
-                            placeholder="Ingrese su contraseña"
-                        >
+                        <input type="password" id="password" name="password" placeholder="Ingrese su contraseña" required>
                     </div>
                 </div>
 
-                <a href="#" class="forgot-password">¿Olvidaste tu contraseña?</a>
+                <a href="{% url 'reset_password' %}">¿Olvidaste tu contraseña?</a>
 
                 <button type="submit">Iniciar sesión</button>
             </form>
         </section>
-
-    </main>
+        </main>
 </body>
 </html>

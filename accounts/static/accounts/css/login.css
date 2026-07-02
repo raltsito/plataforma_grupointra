@@ -175,3 +175,19 @@ button:hover {
 .btn-logout:hover {
     background-color: #c9302c;
 }
+/* Limpieza del enlace para que coincida con tu diseño */
+/*No borrar el !important, ya que es necesario para sobreescribir los estilos predeterminados del navegador*/
+.login-form a {
+    color: #666 !important;             /* !important obliga a ignorar los estilos del navegador */
+    text-decoration: none !important;   /* Elimina el subrayado */
+    font-size: 1.1rem;
+    display: block;
+    text-align: center;
+    margin-top: 15px;
+}
+
+/* Para cuando se pasa el cursor */
+.login-form a:hover {
+    color: #333 !important;
+    text-decoration: none !important;   /* Mantenemos sin subrayado también al pasar el mouse */
+}

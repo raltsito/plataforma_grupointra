@@ -3,15 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <title>Grupo Intra | Panel</title>
-</head>
+    {% load static %}
+<link rel="stylesheet" href="{% static 'accounts/css/dashboard.css' %}">
+    </head>
 <body>
-    <h1>Panel principal</h1>
-    <p>Inicio de sesión correcto.</p>
+    <header>
+        <h1>Portal Intra</h1>
+        <p>Bienvenido, <strong>{{ user.username }}</strong></p>
+    </header>
 
-    <!-- Formulario seguro para el cierre de sesión -->
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit" class="btn-logout">Cerrar sesión</button>
-    </form>
+    <main class="dashboard-grid">
+        {% if es_sistemas or es_direccion %}
+        <div class="card">
+            <h3>Módulo de Sistemas</h3>
+            <p>Acceso a configuración técnica y logs.</p>
+        </div>
+        {% endif %}
+
+        {% if es_terapeuta or es_recepcion or es_sistemas %}
+        <div class="card">
+            <h3>Gestión Clínica</h3>
+            <p>Acceso a expedientes e instrumentos.</p>
+        </div>
+        {% endif %}
+
+        {% if es_admin or es_direccion or es_sistemas %}
+        <div class="card">
+            <h3>Módulo Contable</h3>
+            <p>Control de estados de cuenta y pagos.</p>
+        </div>
+        {% endif %}
+
+    </main>
+
+    <footer style="margin-top: 50px;">
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-logout">Cerrar sesión</button>
+        </form>
+    </footer>
 </body>
 </html>
