@@ -1,0 +1,154 @@
+from django.conf import settings
+from django.db import models
+
+
+class CategoriaTerapeuta(models.TextChoices):
+    A = 'A', 'Categoría A'
+    B = 'B', 'Categoría B'
+    C = 'C', 'Categoría C'
+
+
+class Tabulador(models.Model):
+    """Tabulador institucional de honorarios. Versionado: un cambio de
+    tarifas se registra como una fila nueva, nunca editando una vigente,
+    para que los honorarios ya calculados no se alteren retroactivamente."""
+
+    categoria = models.CharField(max_length=1, choices=CategoriaTerapeuta.choices)
+    pago_base = models.DecimalField(max_digits=10, decimal_places=2)
+    umbral_pacientes_semana = models.PositiveIntegerField(
+        help_text='Número de pacientes atendidos por semana a partir del cual aplica el bono de gasolina.'
+    )
+    monto_bono = models.DecimalField(max_digits=10, decimal_places=2)
+    vigente_desde = models.DateField()
+
+    class Meta:
+        verbose_name = 'Tabulador'
+        verbose_name_plural = 'Tabuladores'
+        ordering = ['-vigente_desde']
+
+    def __str__(self):
+        return f'{self.get_categoria_display()} · vigente desde {self.vigente_desde}'
+
+
+class Ingreso(models.Model):
+    class Concepto(models.TextChoices):
+        CONSULTA = 'consulta', 'Consulta'
+        INSCRIPCION_DIPLOMADO = 'inscripcion_diplomado', 'Inscripción diplomado'
+        MENSUALIDAD_DIPLOMADO = 'mensualidad_diplomado', 'Mensualidad diplomado'
+        INSCRIPCION_TALLER = 'inscripcion_taller', 'Inscripción taller'
+        MENSUALIDAD_TALLER = 'mensualidad_taller', 'Mensualidad taller'
+        CURSO_CERTIFICACION = 'curso_certificacion', 'Curso / certificación'
+
+    class Estatus(models.TextChoices):
+        PAGADO = 'pagado', 'Pagado'
+        PARCIAL = 'parcial', 'Parcial'
+        PENDIENTE = 'pendiente', 'Pendiente'
+
+    concepto = models.CharField(max_length=30, choices=Concepto.choices)
+    terapeuta = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='ingresos',
+    )
+    persona = models.CharField('Alumno / Paciente', max_length=150, blank=True)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PENDIENTE)
+    fecha = models.DateField()
+
+    class Meta:
+        verbose_name = 'Ingreso'
+        verbose_name_plural = 'Ingresos'
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'{self.get_concepto_display()} · {self.monto} · {self.fecha}'
+
+
+class Egreso(models.Model):
+    class Categoria(models.TextChoices):
+        RENTA = 'renta', 'Renta'
+        SERVICIOS = 'servicios', 'Servicios'
+        INSUMOS = 'insumos', 'Insumos'
+        NOMINA_ADMIN = 'nomina_admin', 'Nómina administrativa'
+
+    concepto = models.CharField(max_length=150)
+    categoria = models.CharField(max_length=20, choices=Categoria.choices)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    fecha = models.DateField()
+
+    class Meta:
+        verbose_name = 'Egreso'
+        verbose_name_plural = 'Egresos'
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'{self.concepto} · {self.monto} · {self.fecha}'
+
+
+class Honorario(models.Model):
+    class Estatus(models.TextChoices):
+        PAGADO = 'pagado', 'Pagado'
+        PENDIENTE = 'pendiente', 'Pendiente'
+
+    terapeuta = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='honorarios',
+    )
+    tabulador = models.ForeignKey(Tabulador, on_delete=models.PROTECT, related_name='honorarios')
+    periodo_mes = models.PositiveSmallIntegerField()
+    periodo_anio = models.PositiveSmallIntegerField()
+    num_pacientes = models.PositiveIntegerField()
+    bono = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    total = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PENDIENTE)
+
+    class Meta:
+        verbose_name = 'Honorario'
+        verbose_name_plural = 'Honorarios'
+        ordering = ['-periodo_anio', '-periodo_mes']
+        unique_together = ('terapeuta', 'periodo_mes', 'periodo_anio')
+
+    def __str__(self):
+        return f'{self.terapeuta} · {self.periodo_mes}/{self.periodo_anio}'
+
+    def save(self, *args, **kwargs):
+        # El bono y el total se calculan una sola vez, al crear el registro,
+        # para que un honorario ya cerrado no cambie si el tabulador se
+        # actualiza después (regla de negocio: pagos cerrados no se alteran).
+        if self._state.adding:
+            self.bono = (
+                self.tabulador.monto_bono
+                if self.num_pacientes > self.tabulador.umbral_pacientes_semana
+                else 0
+            )
+            self.total = self.tabulador.pago_base + self.bono
+        super().save(*args, **kwargs)
+
+
+class Donativo(models.Model):
+    class Tipo(models.TextChoices):
+        MONETARIO = 'monetario', 'Monetario'
+        ESPECIE = 'especie', 'En especie'
+
+    class EstatusCFDI(models.TextChoices):
+        VIGENTE = 'vigente', 'Vigente'
+        CANCELADO = 'cancelado', 'Cancelado'
+        TRAMITE = 'tramite', 'En trámite'
+
+    donante_nombre = models.CharField(max_length=200)
+    donante_rfc = models.CharField('RFC', max_length=13, blank=True)
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    folio_cfdi = models.CharField('Folio CFDI', max_length=50, blank=True, null=True)
+    estatus_cfdi = models.CharField(
+        'Estatus CFDI', max_length=10, choices=EstatusCFDI.choices, default=EstatusCFDI.TRAMITE,
+    )
+    archivo_xml = models.FileField(upload_to='finanzas/donativos/xml/', blank=True, null=True)
+    archivo_pdf = models.FileField(upload_to='finanzas/donativos/pdf/', blank=True, null=True)
+    fecha = models.DateField()
+
+    class Meta:
+        verbose_name = 'Donativo'
+        verbose_name_plural = 'Donativos'
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'{self.donante_nombre} · {self.monto} · {self.fecha}'

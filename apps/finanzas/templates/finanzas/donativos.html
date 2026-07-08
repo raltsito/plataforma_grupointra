@@ -1,0 +1,60 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Donativos y CFDI{% endblock %}
+{% block accion_primaria %}Registrar donativo{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-kpi-grid">
+    {% for s in stats %}
+    <div class="fin-stat">
+      <div class="fin-stat-label">{{ s.label }}</div>
+      <div class="fin-stat-value">{{ s.value }}</div>
+      <div class="fin-stat-sub">{{ s.sub }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Donativos y comprobación fiscal</div>
+      <span class="fin-badge fin-badge-vigente">Donataria Autorizada · SAT</span>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Donante</th>
+            <th>Tipo</th>
+            <th class="num">Monto</th>
+            <th>CFDI</th>
+            <th>Estatus</th>
+            <th>Documentos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in donativos %}
+          <tr>
+            <td>{{ d.donante_nombre }}<div style="font-size:11px; color:#9AA2B1;">{{ d.donante_rfc|default:"—" }}</div></td>
+            <td>{{ d.get_tipo_display }}</td>
+            <td class="num">{{ d.monto|dinero }}</td>
+            <td>{{ d.folio_cfdi|default:"—" }}</td>
+            <td><span class="fin-badge fin-badge-{{ d.estatus_cfdi }}">{{ d.get_estatus_cfdi_display }}</span></td>
+            <td>
+              {% if d.archivo_xml %}<a href="{{ d.archivo_xml.url }}" class="fin-doc-badge fin-doc-xml">XML</a>{% endif %}
+              {% if d.archivo_pdf %}<a href="{{ d.archivo_pdf.url }}" class="fin-doc-badge fin-doc-pdf">PDF</a>{% endif %}
+              {% if not d.archivo_xml and not d.archivo_pdf %}<span style="font-size:11px; color:#C3CBD8;">—</span>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="fin-empty">Todavía no hay donativos registrados. Agrégalos desde /admin/.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

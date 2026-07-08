@@ -1,0 +1,50 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Ingresos{% endblock %}
+{% block accion_primaria %}Registrar ingreso{% endblock %}
+
+{% block contenido %}
+<div class="fin-stat-row">
+  {% for s in stats %}
+  <div class="fin-stat">
+    <div class="fin-stat-label">{{ s.label }}</div>
+    <div class="fin-stat-value" style="color:{{ s.color }};">{{ s.value }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="fin-card fin-table-card">
+  <div class="fin-table-toolbar">
+    <div class="fin-card-title">Registro de ingresos</div>
+  </div>
+  <div class="fin-table-wrap">
+    <table class="fin-table">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Alumno / Paciente</th>
+          <th>Terapeuta</th>
+          <th class="num">Monto</th>
+          <th>Estatus</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ingresos %}
+        <tr>
+          <td>{{ row.get_concepto_display }}</td>
+          <td>{{ row.persona|default:"—" }}</td>
+          <td>{% if row.terapeuta %}{{ row.terapeuta.get_full_name|default:row.terapeuta.username }}{% else %}—{% endif %}</td>
+          <td class="num">{{ row.monto|dinero }}</td>
+          <td><span class="fin-badge fin-badge-{{ row.estatus }}">{{ row.get_estatus_display }}</span></td>
+          <td>{{ row.fecha|date:"d M" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="fin-empty">Todavía no hay ingresos registrados. Agrégalos desde /admin/.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

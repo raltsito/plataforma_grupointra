@@ -31,8 +31,10 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-     # App encargada del acceso de usuarios y pantalla de login.
-    'accounts',
+     # Núcleo del portal: acceso de usuarios, autenticación y permisos.
+    'apps.core',
+    # Módulo de Finanzas: ingresos, honorarios, donativos y reportes.
+    'apps.finanzas',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -128,4 +130,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
+
+# Archivos subidos por el usuario (ej. XML/PDF de CFDI de donativos).
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

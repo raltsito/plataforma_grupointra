@@ -1,0 +1,111 @@
+{% load static %}<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grupo Intra | Iniciar sesión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'core/css/login.css' %}">
+</head>
+<body>
+<div class="login-wrap">
+
+  <!-- ===== Etapa 1: tarjeta de login ===== -->
+  <div class="login-stage" id="login-stage">
+    <div class="login-card" id="login-card">
+      <div class="login-card-head">
+        <img src="{% static 'core/images/intra-logo.png' %}" alt="Grupo Intra" class="login-logo">
+        <div class="login-rule"></div>
+        <div class="login-eyebrow">Centralización Intra</div>
+        <div class="login-subtitle">Portal único de acceso institucional</div>
+      </div>
+
+      {% if messages %}
+      <div class="login-messages">
+        {% for message in messages %}<p class="login-error">{{ message }}</p>{% endfor %}
+      </div>
+      {% endif %}
+      <p class="login-error" id="login-error-js" hidden></p>
+
+      <form method="post" class="login-form" id="login-form" data-redirect="{% url 'dashboard' %}">
+        {% csrf_token %}
+        <label class="login-field">
+          <span class="login-field-label">Usuario</span>
+          <span class="login-input-wrap">
+            <span class="login-input-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg>
+            </span>
+            <input type="text" name="username" autocomplete="username" placeholder="Ingrese su usuario" required>
+          </span>
+        </label>
+        <label class="login-field">
+          <span class="login-field-label">Contraseña</span>
+          <span class="login-input-wrap">
+            <span class="login-input-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+            </span>
+            <input type="password" name="password" autocomplete="current-password" placeholder="Ingrese su contraseña" required>
+          </span>
+        </label>
+
+        <div class="login-row">
+          <label class="login-remember">
+            <input type="checkbox" checked>
+            Recordar sesión
+          </label>
+          <a href="{% url 'reset_password' %}">¿Olvidaste tu contraseña?</a>
+        </div>
+
+        <button type="submit" class="login-submit" id="login-submit">
+          <span class="login-spinner" id="login-spinner" hidden></span>
+          <span id="login-submit-label">Iniciar sesión</span>
+        </button>
+      </form>
+
+      <div class="login-footnote">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A7AEBC" stroke-width="1.8"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+        <span>Uso exclusivo de personal autorizado de Grupo Intra</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Etapa 2: escena de bienvenida (revela módulos y converge al sidebar) ===== -->
+  <div class="login-scene" id="login-scene" hidden>
+    <header class="login-scene-header">
+      <div class="login-scene-brand">
+        <div class="core-sidebar-mark">I</div>
+        <div>
+          <strong>INTRA</strong>
+          <span>Centralización</span>
+        </div>
+      </div>
+      <div class="login-scene-user">
+        <div style="text-align:right; line-height:1.2;">
+          <div class="core-user-name" id="scene-user-name" style="color:#fff;"></div>
+          <div class="core-user-role" style="color:#9DB0D0;">Portal Intra</div>
+        </div>
+        <div class="core-user-avatar" id="scene-user-avatar" style="background:#C9A24B; color:#1B2C4F;"></div>
+      </div>
+    </header>
+    <div class="login-scene-body">
+      <div class="login-scene-heading">
+        <div class="core-hero-eyebrow"><span class="rule"></span> Tus accesos <span class="rule"></span></div>
+        <h1>Bienvenida de vuelta</h1>
+      </div>
+      <div class="login-scene-grid" id="login-scene-grid"></div>
+    </div>
+  </div>
+
+  <!-- Rail fantasma (invisible): mide dónde caerá cada ícono en el sidebar real del dashboard -->
+  <aside class="core-sidebar" id="ghost-sidebar" aria-hidden="true">
+    <div class="core-sidebar-brand"><div class="core-sidebar-mark">I</div></div>
+    <nav class="core-nav" id="ghost-nav"></nav>
+  </aside>
+
+</div>
+<script src="{% static 'core/js/login.js' %}"></script>
+</body>
+</html>

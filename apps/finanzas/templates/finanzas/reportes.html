@@ -1,0 +1,80 @@
+{% extends 'finanzas/_base.html' %}
+
+{% block titulo %}Reportes{% endblock %}
+{% block accion_primaria %}Exportar todo{% endblock %}
+
+{% block contenido %}
+<div class="fin-two-col-b">
+
+  <div class="fin-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Estado de resultados</div>
+      <span style="font-size:12px; color:#8A93A6;">Enero – Diciembre {{ anio }}</span>
+    </div>
+    <div style="padding: 8px 24px 20px;">
+      <div class="fin-resultado-row head"><span>Ingresos</span><span></span></div>
+      <div class="fin-resultado-row"><span class="label">Servicios clínicos y educativos</span><span class="value">{{ total_ingresos_servicios }}</span></div>
+      <div class="fin-resultado-row"><span class="label">Donativos</span><span class="value">{{ total_donativos }}</span></div>
+      <div class="fin-resultado-row"><span class="label" style="font-weight:600;">Total ingresos</span><span class="value">{{ total_ingresos }}</span></div>
+
+      <div class="fin-resultado-row head"><span>Egresos</span><span></span></div>
+      <div class="fin-resultado-row"><span class="label">Honorarios de terapeutas</span><span class="value neg">{{ total_honorarios }}</span></div>
+      <div class="fin-resultado-row"><span class="label">Nómina administrativa</span><span class="value neg">{{ total_nomina }}</span></div>
+      <div class="fin-resultado-row"><span class="label">Renta y servicios</span><span class="value neg">{{ total_renta }}</span></div>
+      <div class="fin-resultado-row"><span class="label">Insumos y operación</span><span class="value neg">{{ total_insumos }}</span></div>
+      <div class="fin-resultado-row"><span class="label" style="font-weight:600;">Total egresos</span><span class="value neg">{{ total_egresos }}</span></div>
+
+      <div class="fin-resultado-row total"><span class="label">Resultado del ejercicio</span><span class="value">{{ resultado_ejercicio }}</span></div>
+    </div>
+  </div>
+
+  <div class="fin-stack" style="gap:16px;">
+    <div class="fin-card fin-card-pad">
+      <div class="fin-card-title" style="font-size:16px; margin-bottom:14px;">Generar reportes</div>
+
+      <div class="fin-report-doc" title="Disponible en una futura versión">
+        <span class="fin-report-doc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg></span>
+        <div class="fin-report-doc-body">
+          <div class="fin-report-doc-name">Estado de resultados</div>
+          <div class="fin-report-doc-desc">Ingresos, egresos y balance</div>
+        </div>
+        <span class="fin-report-doc-tag">PDF</span>
+      </div>
+
+      <div class="fin-report-doc" title="Disponible en una futura versión">
+        <span class="fin-report-doc-icon" style="background:#E6F4EC; color:#1F8A5B;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><line x1="12" y1="3" x2="12" y2="21"></line><path d="M4 7h6a3 3 0 0 1 0 6H4"></path><path d="M20 17h-6a3 3 0 0 1 0-6h6"></path></svg></span>
+        <div class="fin-report-doc-body">
+          <div class="fin-report-doc-name">Flujo de efectivo</div>
+          <div class="fin-report-doc-desc">Entradas y salidas por periodo</div>
+        </div>
+        <span class="fin-report-doc-tag" style="color:#1F8A5B; background:#E6F4EC;">XLSX</span>
+      </div>
+
+      <div class="fin-report-doc" title="Disponible en una futura versión">
+        <span class="fin-report-doc-icon" style="background:#F6EFDD; color:#C9A24B;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"></path></svg></span>
+        <div class="fin-report-doc-body">
+          <div class="fin-report-doc-name">Detalle de honorarios</div>
+          <div class="fin-report-doc-desc">Cálculo por tabulador</div>
+        </div>
+        <span class="fin-report-doc-tag" style="color:#1F8A5B; background:#E6F4EC;">XLSX</span>
+      </div>
+
+      <div class="fin-report-doc" style="margin-bottom:0;" title="Disponible en una futura versión">
+        <span class="fin-report-doc-icon" style="background:#E1F1F3; color:#15B3C7;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"></path></svg></span>
+        <div class="fin-report-doc-body">
+          <div class="fin-report-doc-name">Concentrado de donativos</div>
+          <div class="fin-report-doc-desc">CFDI emitidos y estatus</div>
+        </div>
+        <span class="fin-report-doc-tag">PDF</span>
+      </div>
+    </div>
+
+    <div class="fin-gold-cta">
+      <div class="fin-gold-cta-title">Reporte anual de donativos</div>
+      <div class="fin-gold-cta-body">Requerido por el SAT para conservar la autorización de Donataria. Ejercicio fiscal {{ anio }}.</div>
+      <button type="button" title="Disponible en una futura versión">Descargar declaración</button>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

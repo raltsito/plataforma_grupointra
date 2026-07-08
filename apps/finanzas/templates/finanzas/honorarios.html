@@ -1,0 +1,63 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Egresos y Honorarios{% endblock %}
+{% block accion_primaria %}Registrar egreso{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-banner">
+    <span class="fin-banner-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M12 3 5 6v5.5c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V6l-7-3Z"></path></svg>
+    </span>
+    <div class="fin-banner-text"><b>Tabulador institucional.</b> El honorario se calcula por categoría (pago base) más bono de gasolina al superar el umbral de pacientes por semana definido en el tabulador vigente.</div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Cálculo de honorarios · mes en curso</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Terapeuta</th>
+            <th>Categoría</th>
+            <th class="num">Pago base</th>
+            <th style="text-align:center;">Pacientes</th>
+            <th class="num">Bono gasolina</th>
+            <th class="num">Total</th>
+            <th>Estatus</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in honorarios %}
+          <tr>
+            <td>{{ h.terapeuta.get_full_name|default:h.terapeuta.username }}</td>
+            <td><span class="fin-cat-badge fin-cat-{{ h.tabulador.categoria }}">Cat. {{ h.tabulador.categoria }}</span></td>
+            <td class="num">{{ h.tabulador.pago_base|dinero }}</td>
+            <td style="text-align:center;">{{ h.num_pacientes }}</td>
+            <td class="num" style="color:{% if h.bono %}#1F8A5B{% else %}#9AA2B1{% endif %};">{{ h.bono|dinero }}</td>
+            <td class="num">{{ h.total|dinero }}</td>
+            <td><span class="fin-badge fin-badge-{{ h.estatus }}">{{ h.get_estatus_display }}</span></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="fin-empty">Todavía no hay honorarios calculados este mes. Se registran desde /admin/.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if honorarios %}
+        <tfoot>
+          <tr>
+            <td colspan="5">Total honorarios del periodo</td>
+            <td class="num">{{ total_periodo }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

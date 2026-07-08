@@ -1,0 +1,119 @@
+{% load static core_extras %}<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grupo Intra | Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}">
+</head>
+<body>
+
+<aside class="core-sidebar" id="core-sidebar">
+  <div class="core-sidebar-brand">
+    <div class="core-sidebar-mark">I</div>
+    <div class="core-sidebar-wordmark">
+      <strong>INTRA</strong>
+      <span>Centralización</span>
+    </div>
+  </div>
+
+  <nav class="core-nav">
+    {% for m in modulos %}
+    <a href="{{ m.url|default:'#' }}" class="core-nav-item{% if not m.disponible %} locked{% endif %}" title="{{ m.nombre }}{% if not m.disponible %} (próximamente){% endif %}"{% if not m.disponible %} onclick="return false;"{% endif %}>
+      <span class="core-nav-icon">{% icono_modulo m.key m.accent 18 %}</span>
+      <span class="core-nav-label">{{ m.nombre }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="core-sidebar-footer">
+    <button type="button" class="core-pin-btn" id="core-pin-btn" title="Fijar menú">
+      <span class="core-pin-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 7 16 12 11 17"></polyline><polyline points="6 7 11 12 6 17"></polyline></svg>
+      </span>
+      <span class="core-pin-label" id="core-pin-label">Fijar menú</span>
+    </button>
+  </div>
+</aside>
+
+<div class="core-main">
+  <header class="core-header">
+    <div>
+      <div class="core-header-eyebrow">Panel principal</div>
+      <div class="core-header-title">Inicio</div>
+    </div>
+    <div class="core-header-actions">
+      <div style="text-align:right; line-height:1.2;">
+        <div class="core-user-name">{{ user.get_full_name|default:user.username }}</div>
+        <div class="core-user-role">{% if user.is_superuser %}Sistemas{% else %}{{ user.groups.all|join:", "|default:"Sin grupo asignado" }}{% endif %}</div>
+      </div>
+      <div class="core-user-avatar">{{ user.username|slice:":2"|upper }}</div>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="core-logout-btn" title="Cerrar sesión">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <div class="core-hero-wrap">
+    <img src="{% static 'core/images/intra-logo.png' %}" alt="" aria-hidden="true" class="core-hero-logo">
+    <div class="core-hero">
+      <div class="core-hero-eyebrow"><span class="rule"></span> Bienvenida</div>
+      <h1>Hola de nuevo, {{ user.first_name|default:user.username }}.</h1>
+      <p>Todo Intra centralizado en un solo lugar. Selecciona un módulo para comenzar a trabajar.</p>
+      <div class="core-hero-rule"></div>
+
+      <p class="core-hero-label">Accesos frecuentes</p>
+      {% if accesos_rapidos %}
+      <div class="core-quick-row">
+        {% for m in accesos_rapidos %}
+        <a href="{{ m.url }}" class="core-quick-item">
+          <span class="core-quick-icon" style="background:{{ m.tint }};">{% icono_modulo m.key m.accent 20 %}</span>
+          <span>
+            <span class="core-quick-name">{{ m.nombre }}</span><br>
+            <span class="core-quick-sub">Abrir módulo</span>
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="core-empty-quick">Todavía no tienes módulos disponibles. Contacta a Sistemas si crees que esto es un error.</p>
+      {% endif %}
+
+      <p class="core-hero-label core-modulos-heading">Todos los módulos</p>
+      <div class="core-modulos-grid">
+        {% for m in modulos %}
+        <a href="{{ m.url|default:'#' }}" class="core-modulo-card{% if m.disponible %} disponible{% endif %}"{% if not m.disponible %} onclick="return false;"{% endif %}>
+          <span class="core-modulo-accent" style="background:{{ m.accent }};"></span>
+          <span class="core-modulo-icon" style="background:{{ m.tint }};">{% icono_modulo m.key m.accent 26 %}</span>
+          <div class="core-modulo-name">{{ m.nombre }}</div>
+          <div class="core-modulo-desc">{{ m.descripcion }}</div>
+          {% if m.disponible %}
+          <div class="core-modulo-enter" style="color:{{ m.accent }};">
+            Entrar
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </div>
+          {% endif %}
+          {% if not m.disponible %}
+          <div class="core-modulo-lock">
+            <span class="core-modulo-lock-badge">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A93A6" stroke-width="1.8"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+            </span>
+            <span class="core-modulo-lock-label">{% if m.motivo_bloqueo == 'sin_permiso' %}Sin permiso{% else %}Próximamente{% endif %}</span>
+          </div>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'core/js/dashboard.js' %}"></script>
+</body>
+</html>

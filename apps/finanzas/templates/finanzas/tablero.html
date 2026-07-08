@@ -1,0 +1,129 @@
+{% extends 'finanzas/_base.html' %}
+
+{% block titulo %}Tablero general{% endblock %}
+{% block accion_primaria %}Nuevo movimiento{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-kpi-grid">
+    {% for k in kpis %}
+    <div class="fin-kpi" style="--accent: {{ k.accent }};">
+      <div class="fin-kpi-head">
+        <span>{{ k.label }}</span>
+        <span class="fin-kpi-dot"></span>
+      </div>
+      <div class="fin-kpi-value">{{ k.value }}</div>
+      <div class="fin-kpi-delta{% if not k.delta_positivo %} down{% endif %}">
+        <span>{{ k.delta }}</span>
+        <span class="muted">vs. mes anterior</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="fin-two-col">
+    <div class="fin-card fin-card-pad">
+      <div class="fin-card-title">Ingresos vs. Egresos</div>
+      <div class="fin-card-subtitle">Últimos 6 meses · pesos MXN</div>
+      <div class="fin-legend" style="margin-top:10px;">
+        <span class="fin-legend-item"><span class="fin-legend-dot" style="background:#2D5F8B;"></span>Ingresos</span>
+        <span class="fin-legend-item"><span class="fin-legend-dot" style="background:#C9A24B;"></span>Egresos</span>
+      </div>
+      <div class="fin-bar-chart">
+        {% for b in barras %}
+        <div class="fin-bar-group">
+          <div class="fin-bar-pair">
+            <div class="fin-bar ingreso" style="height: {{ b.ingreso_pct }}%;" title="Ingresos: {{ b.ingreso }}"></div>
+            <div class="fin-bar egreso" style="height: {{ b.egreso_pct }}%;" title="Egresos: {{ b.egreso }}"></div>
+          </div>
+          <span class="fin-bar-label">{{ b.mes }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="fin-card fin-card-pad">
+      <div class="fin-card-title">Ingresos por concepto</div>
+      <div class="fin-card-subtitle">Mes en curso</div>
+      <div class="fin-donut-wrap">
+        <div class="fin-donut" style="--gradient: {{ donut_gradient|safe }};">
+          <div class="fin-donut-hole">
+            <div class="fin-donut-total">{{ donut_total }}</div>
+            <div class="fin-donut-caption">total</div>
+          </div>
+        </div>
+      </div>
+      <div class="fin-concept-legend">
+        {% for c in concepto_legend %}
+        <div class="fin-concept-row">
+          <span class="fin-legend-dot" style="background:{{ c.color }};"></span>
+          <span class="label">{{ c.label }}</span>
+          <span class="pct">{{ c.pct }}%</span>
+        </div>
+        {% empty %}
+        <div class="fin-empty">Sin ingresos registrados este mes.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="fin-two-col-b">
+    <div class="fin-card fin-table-card">
+      <div class="fin-table-toolbar">
+        <div class="fin-card-title">Movimientos recientes</div>
+        <a href="{% url 'finanzas:ingresos' %}" style="font-size:12.5px; color:#2D5F8B; font-weight:600; text-decoration:none;">Ver todos →</a>
+      </div>
+      <div>
+        {% for r in recientes %}
+        <div class="fin-list-row">
+          <span class="fin-list-icon" style="background:{% if r.signo == '+' %}#E6F4EC; color:#1F8A5B{% else %}#FBEEDF; color:#9A6B12{% endif %};">{{ r.signo }}</span>
+          <div class="fin-list-body">
+            <div class="fin-list-title">{{ r.concepto }}</div>
+            <div class="fin-list-meta">{{ r.meta }}</div>
+          </div>
+          <div class="fin-list-amount">
+            <div class="value {% if r.signo == '+' %}pos{% else %}neg{% endif %}">{{ r.signo }}{{ r.monto }}</div>
+            <div class="date">{{ r.fecha|date:"d M" }}</div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="fin-empty">Todavía no hay movimientos registrados este mes.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="fin-stack" style="gap:20px;">
+      <div class="fin-goal-card">
+        <div class="fin-goal-head">
+          <span>Meta anual de donativos</span>
+          <span>{{ meta_donativos.pct }}%</span>
+        </div>
+        <div class="fin-goal-value">{{ meta_donativos.acumulado }} <small>/ {{ meta_donativos.meta }}</small></div>
+        <div class="fin-goal-bar"><div class="fin-goal-bar-fill" style="width: {{ meta_donativos.pct }}%;"></div></div>
+        <div class="fin-goal-note">Necesario para conservar la autorización de Donataria.</div>
+      </div>
+
+      <div class="fin-card fin-card-pad">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <span class="fin-card-title" style="font-size:16px;">Honorarios pendientes</span>
+          <span class="fin-badge fin-badge-pendiente">{{ pendientes|length }} terapeutas</span>
+        </div>
+        {% for p in pendientes %}
+        <div class="fin-list-row" style="padding:9px 0;">
+          <span class="fin-list-icon" style="width:30px; height:30px; background:#EDF1F7; color:#2D5F8B; font-size:11px;">{{ p.terapeuta.username|slice:":2"|upper }}</span>
+          <div class="fin-list-body">
+            <div class="fin-list-title">{{ p.terapeuta.get_full_name|default:p.terapeuta.username }}</div>
+            <div class="fin-list-meta">Cat. {{ p.categoria }} · {{ p.num_pacientes }} pacientes</div>
+          </div>
+          <span style="font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums;">{{ p.total }}</span>
+        </div>
+        {% empty %}
+        <div class="fin-empty">No hay honorarios pendientes.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
