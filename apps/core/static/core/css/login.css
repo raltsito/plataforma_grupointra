@@ -8,21 +8,14 @@ body {
   overflow-x: hidden;
 }
 
-@keyframes login-emerge { 0% { transform: scale(0); opacity: 0; } 55% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-@keyframes login-float { from { transform: translateY(0); } to { transform: translateY(-3px); } }
-@keyframes login-spin { to { transform: rotate(360deg); } }
-@keyframes login-fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
 .login-wrap { position: relative; min-height: 100vh; width: 100%; }
-
-/* ===== Etapa 1: tarjeta de login ===== */
 .login-stage { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+
 .login-card {
   width: 420px; max-width: 100%; background: #fff; border-radius: 30px; padding: 42px 38px 32px;
   box-shadow: 0 24px 60px -28px rgba(20,150,170,.45), 0 2px 8px rgba(27,44,79,.06);
-  border: 3px solid #15B3C7; transition: transform .55s cubic-bezier(.5,0,.15,1), opacity .4s ease;
+  border: 3px solid #15B3C7;
 }
-.login-card.is-collapsing { transform: scale(.12); opacity: 0; }
 
 .login-card-head { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .login-logo { height: 96px; width: auto; object-fit: contain; }
@@ -30,7 +23,7 @@ body {
 .login-eyebrow { font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; letter-spacing: .22em; text-transform: uppercase; color: #2D5F8B; font-weight: 600; }
 .login-subtitle { font-size: 13px; color: #7C879B; margin-top: 6px; }
 
-.login-messages, #login-error-js { margin-top: 20px; }
+.login-messages { margin-top: 20px; }
 .login-error {
   margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: #FBE9E9; color: #B4413B;
   text-align: center; font-size: 13px; font-weight: 600;
@@ -64,57 +57,8 @@ body {
   transition: background .18s, transform .12s, box-shadow .18s;
 }
 .login-submit:hover { background: #0F9AAD; transform: translateY(-1px); box-shadow: 0 14px 28px -10px #15B3C7; }
-.login-submit:disabled { cursor: progress; opacity: .92; }
-.login-spinner {
-  width: 17px; height: 17px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
-  display: inline-block; animation: login-spin .7s linear infinite; opacity: .85;
-}
 
 .login-footnote {
   margin-top: 24px; padding-top: 18px; border-top: 1px solid #EEF1F6; display: flex; align-items: center;
   gap: 8px; justify-content: center; text-align: center; color: #9AA2B1; font-size: 11.5px;
 }
-
-/* ===== Etapa 2: escena de bienvenida (revela módulos y converge al sidebar) ===== */
-.login-scene {
-  position: fixed; inset: 0; z-index: 60; overflow: hidden; display: flex; flex-direction: column;
-  background-color: #F3F5F9; background-image: radial-gradient(circle, rgba(27,44,79,0.055) 1px, transparent 1.4px);
-  background-size: 22px 22px;
-}
-.login-scene-header {
-  background: linear-gradient(100deg,#162543 0%,#1B2C4F 55%,#23396a 100%); color: #fff;
-  padding: 0 clamp(20px,4vw,56px); height: 74px; display: flex; align-items: center; justify-content: space-between;
-  flex-shrink: 0; box-shadow: 0 6px 24px -12px rgba(27,44,79,.6);
-}
-.login-scene-brand { display: flex; align-items: center; gap: 14px; }
-.login-scene-brand strong { font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 19px; letter-spacing: .16em; display: block; }
-.login-scene-brand span { font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: #9DB0D0; display: block; }
-.login-scene-user { display: flex; align-items: center; gap: 18px; }
-
-.login-scene-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
-.login-scene-heading { text-align: center; margin-bottom: clamp(24px,4vh,40px); animation: login-fadeup .5s ease both; }
-.login-scene-heading h1 { font-family: 'Source Serif 4', serif; font-weight: 600; font-size: clamp(26px,3.4vw,38px); color: #1B2C4F; margin: 10px 0 0; }
-
-.login-scene-grid {
-  display: grid; gap: 22px; grid-template-columns: repeat(4, minmax(190px, 234px));
-  justify-content: center; width: 100%; max-width: 1060px;
-}
-@media (max-width: 900px) { .login-scene-grid { grid-template-columns: repeat(2, minmax(160px, 234px)); } }
-@media (max-width: 520px) { .login-scene-grid { grid-template-columns: 1fr; } }
-
-.login-scene-card {
-  border-radius: 18px; animation: login-emerge .72s cubic-bezier(.34,1.56,.64,1) both, login-float 4.6s ease-in-out infinite alternate;
-  transform-origin: 48px 50px;
-}
-.login-scene-card.is-flying { animation: none; transition: transform .72s cubic-bezier(.45,0,.2,1), opacity .5s ease .28s; opacity: 0; }
-.login-scene-card-inner {
-  position: relative; background: #fff; border: 1px solid #E6EAF2; border-radius: 18px; padding: 24px 22px 22px;
-  box-shadow: 0 10px 30px -18px rgba(27,44,79,.4); overflow: hidden;
-}
-.login-scene-accent { position: absolute; top: 0; left: 0; right: 0; height: 4px; }
-.login-scene-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
-.login-scene-name { font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 18px; color: #1B2C4F; line-height: 1.2; }
-.login-scene-desc { font-size: 13px; color: #6B7689; margin-top: 6px; line-height: 1.45; }
-
-/* Rail fantasma: nunca visible, solo se usa para medir posiciones reales del sidebar */
-#ghost-sidebar { opacity: 0; pointer-events: none; }

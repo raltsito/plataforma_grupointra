@@ -24,7 +24,7 @@
       <div class="fin-resultado-row"><span class="label">Insumos y operación</span><span class="value neg">{{ total_insumos }}</span></div>
       <div class="fin-resultado-row"><span class="label" style="font-weight:600;">Total egresos</span><span class="value neg">{{ total_egresos }}</span></div>
 
-      <div class="fin-resultado-row total"><span class="label">Resultado del ejercicio</span><span class="value">{{ resultado_ejercicio }}</span></div>
+      <div class="fin-resultado-row total"><span class="label">Resultado del ejercicio</span><span class="value{% if resultado_negativo %} neg{% endif %}">{{ resultado_ejercicio }}</span></div>
     </div>
   </div>
 

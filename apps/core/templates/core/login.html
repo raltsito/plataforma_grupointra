@@ -7,15 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}">
 <link rel="stylesheet" href="{% static 'core/css/login.css' %}">
 </head>
 <body>
 <div class="login-wrap">
-
-  <!-- ===== Etapa 1: tarjeta de login ===== -->
-  <div class="login-stage" id="login-stage">
-    <div class="login-card" id="login-card">
+  <div class="login-stage">
+    <div class="login-card">
       <div class="login-card-head">
         <img src="{% static 'core/images/intra-logo.png' %}" alt="Grupo Intra" class="login-logo">
         <div class="login-rule"></div>
@@ -28,9 +25,8 @@
         {% for message in messages %}<p class="login-error">{{ message }}</p>{% endfor %}
       </div>
       {% endif %}
-      <p class="login-error" id="login-error-js" hidden></p>
 
-      <form method="post" class="login-form" id="login-form" data-redirect="{% url 'dashboard' %}">
+      <form method="post" class="login-form">
         {% csrf_token %}
         <label class="login-field">
           <span class="login-field-label">Usuario</span>
@@ -59,10 +55,7 @@
           <a href="{% url 'reset_password' %}">¿Olvidaste tu contraseña?</a>
         </div>
 
-        <button type="submit" class="login-submit" id="login-submit">
-          <span class="login-spinner" id="login-spinner" hidden></span>
-          <span id="login-submit-label">Iniciar sesión</span>
-        </button>
+        <button type="submit" class="login-submit">Iniciar sesión</button>
       </form>
 
       <div class="login-footnote">
@@ -71,41 +64,6 @@
       </div>
     </div>
   </div>
-
-  <!-- ===== Etapa 2: escena de bienvenida (revela módulos y converge al sidebar) ===== -->
-  <div class="login-scene" id="login-scene" hidden>
-    <header class="login-scene-header">
-      <div class="login-scene-brand">
-        <div class="core-sidebar-mark">I</div>
-        <div>
-          <strong>INTRA</strong>
-          <span>Centralización</span>
-        </div>
-      </div>
-      <div class="login-scene-user">
-        <div style="text-align:right; line-height:1.2;">
-          <div class="core-user-name" id="scene-user-name" style="color:#fff;"></div>
-          <div class="core-user-role" style="color:#9DB0D0;">Portal Intra</div>
-        </div>
-        <div class="core-user-avatar" id="scene-user-avatar" style="background:#C9A24B; color:#1B2C4F;"></div>
-      </div>
-    </header>
-    <div class="login-scene-body">
-      <div class="login-scene-heading">
-        <div class="core-hero-eyebrow"><span class="rule"></span> Tus accesos <span class="rule"></span></div>
-        <h1>Bienvenida de vuelta</h1>
-      </div>
-      <div class="login-scene-grid" id="login-scene-grid"></div>
-    </div>
-  </div>
-
-  <!-- Rail fantasma (invisible): mide dónde caerá cada ícono en el sidebar real del dashboard -->
-  <aside class="core-sidebar" id="ghost-sidebar" aria-hidden="true">
-    <div class="core-sidebar-brand"><div class="core-sidebar-mark">I</div></div>
-    <nav class="core-nav" id="ghost-nav"></nav>
-  </aside>
-
 </div>
-<script src="{% static 'core/js/login.js' %}"></script>
 </body>
 </html>

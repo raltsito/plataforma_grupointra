@@ -277,5 +277,6 @@ def reportes_view(request):
         'total_insumos': _dinero(-total_insumos),
         'total_egresos': _dinero(-total_egresos),
         'resultado_ejercicio': _dinero(resultado_ejercicio),
+        'resultado_negativo': resultado_ejercicio < 0,
     }
     return render(request, 'finanzas/reportes.html', contexto)

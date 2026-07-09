@@ -22,7 +22,7 @@
 
   <nav class="core-nav">
     {% for m in modulos %}
-    <a href="{{ m.url|default:'#' }}" class="core-nav-item{% if not m.disponible %} locked{% endif %}" title="{{ m.nombre }}{% if not m.disponible %} (próximamente){% endif %}"{% if not m.disponible %} onclick="return false;"{% endif %}>
+    <a href="{{ m.url|default:'#' }}" class="core-nav-item{% if not m.disponible %} locked{% endif %}" title="{{ m.nombre }}{% if m.motivo_bloqueo == 'sin_permiso' %} (sin permiso){% elif m.motivo_bloqueo == 'proximamente' %} (próximamente){% endif %}"{% if not m.disponible %} onclick="return false;"{% endif %}>
       <span class="core-nav-icon">{% icono_modulo m.key m.accent 18 %}</span>
       <span class="core-nav-label">{{ m.nombre }}</span>
     </a>
