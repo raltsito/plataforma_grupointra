@@ -19,9 +19,10 @@ class IngresoAdmin(admin.ModelAdmin):
 
 @admin.register(Egreso)
 class EgresoAdmin(admin.ModelAdmin):
-    list_display = ('concepto', 'categoria', 'monto', 'fecha')
-    list_filter = ('categoria', 'fecha')
-    search_fields = ('concepto',)
+    list_display = ('concepto', 'categoria', 'persona', 'monto', 'estatus', 'metodo_pago', 'fecha')
+    list_filter = ('categoria', 'estatus', 'fecha')
+    search_fields = ('concepto', 'persona', 'referencia_externa')
+    readonly_fields = ('referencia_externa',)
 
 
 @admin.register(Honorario)

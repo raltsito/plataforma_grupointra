@@ -190,6 +190,46 @@ table.fin-table tfoot td { padding: 14px 16px; font-weight: 700; }
 .fin-cat-B { background: #EAF1FB; color: #2D5F8B; }
 .fin-cat-C { background: #F3F5F9; color: #5A6472; }
 
+/* ===== Nómina semanal: botón real, filtros, mensajes ===== */
+.fin-btn-primary.fin-btn-activo { cursor: pointer; }
+.fin-btn-primary.fin-btn-activo:disabled { opacity: .5; cursor: not-allowed; }
+.fin-btn-outline {
+  background: #fff; color: #1B2C4F; border: 1px solid #D7DDE8; border-radius: 10px;
+  padding: 9px 16px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+}
+.fin-filter-form { display: flex; align-items: flex-end; gap: 16px; }
+.fin-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #7C879B; font-weight: 600; }
+.fin-field input[type="date"], .fin-field .fin-input { border: 1px solid #D7DDE8; border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; color: #1B2C4F; width: 100%; }
+.fin-field select.fin-input { background: #fff; }
+.fin-field-error { color: #B4413B; font-size: 11px; font-weight: 500; }
+.fin-messages { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.fin-alert { border-radius: 10px; padding: 12px 16px; font-size: 13px; }
+.fin-alert-success { background: #E6F4EC; color: #1F8A5B; }
+.fin-alert-error { background: #FBE9E9; color: #B4413B; }
+
+/* ===== Modal de captura (Ingresos / Egresos) ===== */
+.fin-modal {
+  border: none; border-radius: 16px; padding: 0; width: 90vw; max-width: 480px;
+  box-shadow: 0 24px 60px -20px rgba(27,44,79,.45);
+}
+.fin-modal::backdrop { background: rgba(27,44,79,.45); }
+.fin-modal-form { display: flex; flex-direction: column; }
+.fin-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px; border-bottom: 1px solid #F0F2F7;
+}
+.fin-modal-close {
+  border: none; background: none; font-size: 20px; line-height: 1; color: #9AA2B1;
+  cursor: pointer; padding: 4px;
+}
+.fin-modal-close:hover { color: #1B2C4F; }
+.fin-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 20px 22px; }
+.fin-modal-grid .fin-field.fin-field-full { grid-column: 1 / -1; }
+.fin-modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 16px 22px; border-top: 1px solid #F0F2F7;
+}
+
 .fin-doc-badge { font-size: 10.5px; font-weight: 700; padding: 3px 7px; border-radius: 5px; margin-right: 4px; }
 .fin-doc-xml { color: #2D5F8B; background: #EAF1FB; }
 .fin-doc-pdf { color: #B4413B; background: #FBE9E9; }

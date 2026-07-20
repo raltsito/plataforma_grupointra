@@ -69,11 +69,31 @@ class Egreso(models.Model):
         SERVICIOS = 'servicios', 'Servicios'
         INSUMOS = 'insumos', 'Insumos'
         NOMINA_ADMIN = 'nomina_admin', 'Nómina administrativa'
+        NOMINA_TERAPEUTAS = 'nomina_terapeutas', 'Nómina terapeutas (ConsultorioWeb)'
+
+    class MetodoPago(models.TextChoices):
+        TRANSFERENCIA = 'transferencia', 'Transferencia'
+        EFECTIVO = 'efectivo', 'Efectivo'
+        CHEQUE = 'cheque', 'Cheque'
+        OTRO = 'otro', 'Otro'
+
+    class Estatus(models.TextChoices):
+        PAGADO = 'pagado', 'Pagado'
+        PENDIENTE = 'pendiente', 'Pendiente'
 
     concepto = models.CharField(max_length=150)
     categoria = models.CharField(max_length=20, choices=Categoria.choices)
+    persona = models.CharField('Terapeuta / Proveedor', max_length=150, blank=True)
     monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo_pago = models.CharField(max_length=20, choices=MetodoPago.choices, blank=True)
+    estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PAGADO)
     fecha = models.DateField()
+    # Identificador del movimiento de origen en un sistema externo (ej.
+    # 'consultorioweb:corte:123:base'), usado para no duplicar un egreso si
+    # la importación se vuelve a correr. null=True (no blank/'') porque un
+    # índice único permite múltiples NULL pero no múltiples cadenas vacías,
+    # y los egresos capturados a mano no tienen referencia externa.
+    referencia_externa = models.CharField(max_length=80, unique=True, null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = 'Egreso'

@@ -2,7 +2,9 @@
 {% load finanzas_extras %}
 
 {% block titulo %}Ingresos{% endblock %}
-{% block accion_primaria %}Registrar ingreso{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-ingreso').showModal()">Registrar ingreso</button>
+{% endblock %}
 
 {% block contenido %}
 <div class="fin-stat-row">
@@ -41,10 +43,62 @@
           <td>{{ row.fecha|date:"d M" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="fin-empty">Todavía no hay ingresos registrados. Agrégalos desde /admin/.</td></tr>
+        <tr><td colspan="6" class="fin-empty">Todavía no hay ingresos registrados este mes.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+
+<dialog id="dialog-ingreso" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar ingreso</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form_ingreso.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form_ingreso.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field">
+        <label for="{{ form_ingreso.concepto.id_for_label }}">Concepto</label>
+        {{ form_ingreso.concepto }}
+        {% if form_ingreso.concepto.errors %}<span class="fin-field-error">{{ form_ingreso.concepto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_ingreso.terapeuta.id_for_label }}">Terapeuta</label>
+        {{ form_ingreso.terapeuta }}
+        {% if form_ingreso.terapeuta.errors %}<span class="fin-field-error">{{ form_ingreso.terapeuta.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_ingreso.persona.id_for_label }}">Alumno / Paciente</label>
+        {{ form_ingreso.persona }}
+        {% if form_ingreso.persona.errors %}<span class="fin-field-error">{{ form_ingreso.persona.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_ingreso.monto.id_for_label }}">Monto</label>
+        {{ form_ingreso.monto }}
+        {% if form_ingreso.monto.errors %}<span class="fin-field-error">{{ form_ingreso.monto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_ingreso.estatus.id_for_label }}">Estatus</label>
+        {{ form_ingreso.estatus }}
+        {% if form_ingreso.estatus.errors %}<span class="fin-field-error">{{ form_ingreso.estatus.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_ingreso.fecha.id_for_label }}">Fecha</label>
+        {{ form_ingreso.fecha }}
+        {% if form_ingreso.fecha.errors %}<span class="fin-field-error">{{ form_ingreso.fecha.errors.0 }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_ingreso.errors %}
+<script>document.getElementById('dialog-ingreso').showModal();</script>
+{% endif %}
 {% endblock %}

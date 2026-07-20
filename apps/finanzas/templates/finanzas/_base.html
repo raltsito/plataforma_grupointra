@@ -35,6 +35,10 @@
         <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M6 10l6 6 6-6"></path><line x1="5" y1="20" x2="19" y2="20"></line></svg></span>
         <span>Egresos y Honorarios</span>
       </a>
+      <a href="{% url 'finanzas:nomina' %}" class="fin-nav-item{% if vista_actual == 'nomina' %} active{% endif %}">
+        <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4z"></path><path d="M4 12h16v8H4z"></path><line x1="8" y1="16" x2="16" y2="16"></line></svg></span>
+        <span>Nómina semanal</span>
+      </a>
       <a href="{% url 'finanzas:donativos' %}" class="fin-nav-item{% if vista_actual == 'donativos' %} active{% endif %}">
         <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"></path></svg></span>
         <span>Donativos y CFDI</span>
@@ -60,7 +64,9 @@
         <div class="fin-header-title">{% block titulo %}{% endblock %}</div>
       </div>
       <div class="fin-header-actions">
+        {% block acciones_header %}
         <button type="button" class="fin-btn-primary" title="Disponible en una futura versión">{% block accion_primaria %}{% endblock %}</button>
+        {% endblock %}
         <div class="fin-user-chip">
           <div class="fin-user-name">{{ user.get_full_name|default:user.username }}</div>
           <div class="fin-user-avatar">{{ user.username|slice:":2"|upper }}</div>
@@ -69,6 +75,13 @@
     </header>
 
     <main class="fin-content">
+      {% if messages %}
+      <div class="fin-messages">
+        {% for message in messages %}
+        <div class="fin-alert fin-alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
       {% block contenido %}{% endblock %}
     </main>
   </div>

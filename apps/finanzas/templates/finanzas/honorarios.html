@@ -2,7 +2,9 @@
 {% load finanzas_extras %}
 
 {% block titulo %}Egresos y Honorarios{% endblock %}
-{% block accion_primaria %}Registrar egreso{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-egreso').showModal()">Registrar egreso</button>
+{% endblock %}
 
 {% block contenido %}
 <div class="fin-stack">
@@ -59,5 +61,107 @@
     </div>
   </div>
 
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Egresos del mes</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Categoría</th>
+            <th>Persona / Proveedor</th>
+            <th class="num">Monto</th>
+            <th>Método de pago</th>
+            <th>Estatus</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in egresos %}
+          <tr>
+            <td>{{ e.concepto }}</td>
+            <td>{{ e.get_categoria_display }}</td>
+            <td>{{ e.persona|default:"—" }}</td>
+            <td class="num">{{ e.monto|dinero }}</td>
+            <td>{{ e.get_metodo_pago_display|default:"—" }}</td>
+            <td><span class="fin-badge fin-badge-{{ e.estatus }}">{{ e.get_estatus_display }}</span></td>
+            <td>{{ e.fecha|date:"d M" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="fin-empty">Todavía no hay egresos registrados este mes.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if egresos %}
+        <tfoot>
+          <tr>
+            <td colspan="3">Total egresos del periodo</td>
+            <td class="num">{{ total_egresos_periodo }}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
 </div>
+
+<dialog id="dialog-egreso" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar egreso</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form_egreso.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form_egreso.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_egreso.concepto.id_for_label }}">Concepto</label>
+        {{ form_egreso.concepto }}
+        {% if form_egreso.concepto.errors %}<span class="fin-field-error">{{ form_egreso.concepto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.categoria.id_for_label }}">Categoría</label>
+        {{ form_egreso.categoria }}
+        {% if form_egreso.categoria.errors %}<span class="fin-field-error">{{ form_egreso.categoria.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.persona.id_for_label }}">Terapeuta / Proveedor</label>
+        {{ form_egreso.persona }}
+        {% if form_egreso.persona.errors %}<span class="fin-field-error">{{ form_egreso.persona.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.monto.id_for_label }}">Monto</label>
+        {{ form_egreso.monto }}
+        {% if form_egreso.monto.errors %}<span class="fin-field-error">{{ form_egreso.monto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.metodo_pago.id_for_label }}">Método de pago</label>
+        {{ form_egreso.metodo_pago }}
+        {% if form_egreso.metodo_pago.errors %}<span class="fin-field-error">{{ form_egreso.metodo_pago.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.estatus.id_for_label }}">Estatus</label>
+        {{ form_egreso.estatus }}
+        {% if form_egreso.estatus.errors %}<span class="fin-field-error">{{ form_egreso.estatus.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_egreso.fecha.id_for_label }}">Fecha</label>
+        {{ form_egreso.fecha }}
+        {% if form_egreso.fecha.errors %}<span class="fin-field-error">{{ form_egreso.fecha.errors.0 }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_egreso.errors %}
+<script>document.getElementById('dialog-egreso').showModal();</script>
+{% endif %}
 {% endblock %}

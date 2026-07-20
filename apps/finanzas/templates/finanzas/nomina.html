@@ -1,0 +1,71 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Nómina semanal{% endblock %}
+
+{% block acciones_header %}
+<button type="submit" form="form-importar-nomina" class="fin-btn-primary fin-btn-activo" {% if not hay_seleccionables %}disabled{% endif %}>Importar seleccionados</button>
+{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-banner">
+    <span class="fin-banner-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4z"></path><path d="M4 12h16v8H4z"></path><line x1="8" y1="16" x2="16" y2="16"></line></svg>
+    </span>
+    <div class="fin-banner-text"><b>Nómina sellada en ConsultorioWeb.</b> Se muestran únicamente los cortes semanales en estatus aprobado o pagado; los cortes en borrador no pueden importarse porque todavía pueden recalcularse.</div>
+  </div>
+
+  <form method="get" class="fin-card fin-card-pad fin-filter-form">
+    <div class="fin-field"><label>Desde</label><input type="date" name="fecha_inicio" value="{{ fecha_inicio }}"></div>
+    <div class="fin-field"><label>Hasta</label><input type="date" name="fecha_fin" value="{{ fecha_fin }}"></div>
+    <button type="submit" class="fin-btn-outline">Buscar cortes</button>
+  </form>
+
+  {% if error %}
+  <div class="fin-alert fin-alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form id="form-importar-nomina" method="post" class="fin-card fin-table-card">
+    {% csrf_token %}
+    <input type="hidden" name="fecha_inicio" value="{{ fecha_inicio }}">
+    <input type="hidden" name="fecha_fin" value="{{ fecha_fin }}">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Cortes semanales sellados</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Terapeuta</th>
+            <th>Semana</th>
+            <th class="num">Pago base</th>
+            <th class="num">Bono / vale</th>
+            <th class="num">Total</th>
+            <th>Estatus</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cortes %}
+          <tr>
+            <td>{% if not c.importado %}<input type="checkbox" name="corte_id" value="{{ c.id }}">{% endif %}</td>
+            <td>{{ c.terapeuta }}</td>
+            <td>{{ c.fecha_inicio }} – {{ c.fecha_fin }}</td>
+            <td class="num">{{ c.subtotal_sesiones_fmt }}</td>
+            <td class="num">{{ c.total_bonos_fmt }}</td>
+            <td class="num">{{ c.total_pago_fmt }}</td>
+            <td><span class="fin-badge fin-badge-{{ c.estatus_badge }}">{{ c.estatus }}</span></td>
+            <td>{% if c.importado %}<span class="fin-badge fin-badge-vigente">Ya importado</span>{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="fin-empty">No hay cortes sellados en este rango de fechas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+{% endblock %}

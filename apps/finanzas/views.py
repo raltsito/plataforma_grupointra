@@ -1,14 +1,20 @@
+from datetime import timedelta
 from decimal import Decimal
 from functools import wraps
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Sum
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.core.permisos.grupos import usuario_pertenece_a
 
+from .forms import EgresoForm, IngresoForm
+from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
+from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
 from .models import Donativo, Egreso, Honorario, Ingreso
 
 META_ANUAL_DONATIVOS = Decimal('2000000')
@@ -189,6 +195,16 @@ def tablero_view(request):
 @acceso_finanzas_requerido
 def ingresos_view(request):
     hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        form_ingreso = IngresoForm(request.POST)
+        if form_ingreso.is_valid():
+            form_ingreso.save()
+            messages.success(request, 'Ingreso registrado correctamente.')
+            return redirect('finanzas:ingresos')
+    else:
+        form_ingreso = IngresoForm(initial={'fecha': hoy})
+
     ingresos_mes = Ingreso.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month)
     stats = [
         {'label': 'Total ingresos del mes', 'value': _dinero(_suma(ingresos_mes)), 'color': '#1F8A5B'},
@@ -199,6 +215,7 @@ def ingresos_view(request):
         'vista_actual': 'ingresos',
         'stats': stats,
         'ingresos': Ingreso.objects.select_related('terapeuta').order_by('-fecha')[:200],
+        'form_ingreso': form_ingreso,
     }
     return render(request, 'finanzas/ingresos.html', contexto)
 
@@ -206,17 +223,83 @@ def ingresos_view(request):
 @acceso_finanzas_requerido
 def honorarios_view(request):
     hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        form_egreso = EgresoForm(request.POST)
+        if form_egreso.is_valid():
+            form_egreso.save()
+            messages.success(request, 'Egreso registrado correctamente.')
+            return redirect('finanzas:honorarios')
+    else:
+        form_egreso = EgresoForm(initial={'fecha': hoy})
+
     honorarios = (
         Honorario.objects.select_related('terapeuta', 'tabulador')
         .filter(periodo_anio=hoy.year, periodo_mes=hoy.month)
         .order_by('terapeuta__first_name', 'terapeuta__username')
     )
+    egresos_mes = Egreso.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month).order_by('-fecha')
     contexto = {
         'vista_actual': 'honorarios',
         'honorarios': honorarios,
         'total_periodo': _dinero(_suma(honorarios, 'total')),
+        'egresos': egresos_mes,
+        'total_egresos_periodo': _dinero(_suma(egresos_mes)),
+        'form_egreso': form_egreso,
     }
     return render(request, 'finanzas/honorarios.html', contexto)
+
+
+@acceso_finanzas_requerido
+def nomina_view(request):
+    hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        fecha_inicio = request.POST.get('fecha_inicio', '')
+        fecha_fin = request.POST.get('fecha_fin', '')
+        ids_seleccionados = set(request.POST.getlist('corte_id'))
+        try:
+            cortes_raw = obtener_cortes_semanales(fecha_inicio, fecha_fin)
+            cortes_por_id = {str(c['id']): c for c in cortes_importables(cortes_raw)}
+            seleccionados = [cortes_por_id[i] for i in ids_seleccionados if i in cortes_por_id]
+            resumen = importar_cortes(seleccionados)
+            messages.success(
+                request,
+                f"Se importaron {resumen['creados']} movimientos a Egresos "
+                f"({resumen['omitidos']} cortes ya estaban importados y se omitieron).",
+            )
+        except ConsultorioWebError as exc:
+            messages.error(request, str(exc))
+        return redirect(f"{reverse('finanzas:nomina')}?fecha_inicio={fecha_inicio}&fecha_fin={fecha_fin}")
+
+    fecha_inicio = request.GET.get('fecha_inicio') or str(hoy - timedelta(weeks=4))
+    fecha_fin = request.GET.get('fecha_fin') or str(hoy)
+
+    cortes = []
+    error = None
+    try:
+        cortes_raw = obtener_cortes_semanales(fecha_inicio, fecha_fin)
+        for c in cortes_importables(cortes_raw):
+            c['importado'] = ya_importado(c['id'])
+            # No existe clase CSS fin-badge-aprobado; 'aprobado' reusa el
+            # estilo verde de 'vigente' (ya definido en finanzas.css).
+            c['estatus_badge'] = 'vigente' if c['estatus'] == 'aprobado' else c['estatus']
+            c['total_pago_fmt'] = _dinero(Decimal(str(c['total_pago'])))
+            c['subtotal_sesiones_fmt'] = _dinero(Decimal(str(c['subtotal_sesiones'])))
+            c['total_bonos_fmt'] = _dinero(Decimal(str(c['total_bonos'])))
+            cortes.append(c)
+    except ConsultorioWebError as exc:
+        error = str(exc)
+
+    contexto = {
+        'vista_actual': 'nomina',
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin,
+        'cortes': cortes,
+        'error': error,
+        'hay_seleccionables': any(not c['importado'] for c in cortes),
+    }
+    return render(request, 'finanzas/nomina.html', contexto)
 
 
 @acceso_finanzas_requerido
@@ -260,8 +343,9 @@ def reportes_view(request):
         + _suma(egresos_anio.filter(categoria=Egreso.Categoria.SERVICIOS))
     )
     total_nomina = _suma(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_ADMIN))
+    total_nomina_terapeutas = _suma(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_TERAPEUTAS))
     total_insumos = _suma(egresos_anio.filter(categoria=Egreso.Categoria.INSUMOS))
-    total_egresos = total_honorarios + total_renta + total_nomina + total_insumos
+    total_egresos = total_honorarios + total_renta + total_nomina + total_nomina_terapeutas + total_insumos
 
     resultado_ejercicio = total_ingresos - total_egresos
 
@@ -273,6 +357,7 @@ def reportes_view(request):
         'total_ingresos': _dinero(total_ingresos),
         'total_honorarios': _dinero(-total_honorarios),
         'total_nomina': _dinero(-total_nomina),
+        'total_nomina_terapeutas': _dinero(-total_nomina_terapeutas),
         'total_renta': _dinero(-total_renta),
         'total_insumos': _dinero(-total_insumos),
         'total_egresos': _dinero(-total_egresos),

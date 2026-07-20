@@ -190,21 +190,63 @@ LOGIN_REDIRECT_URL = 'dashboard'
 
 Esto sirve para que, si alguien intenta entrar al dashboard sin sesión, Django lo mande al login.
 
+19. Integrar la nómina semanal de ConsultorioWeb con Finanzas
+Administración de Grupo Intra pidió, en un documento de requerimientos, que el módulo de Finanzas dejara de depender de copiar montos a mano desde Excel para pagar a los terapeutas. La nómina semanal de los terapeutas no se calcula en este proyecto: se calcula y se sella en otro sistema, ConsultorioWeb (otro repositorio Django, también alojado en Railway, donde vive la plataforma de recepción). La tarea era conectar los dos sistemas.
+Antes de escribir código se revisó el repositorio de ConsultorioWeb y se encontró que ya tenía justo lo necesario: un endpoint
+GET /api/nomina-semanal/
+protegido con una llave (header X-API-Key), pensado exactamente para que "otro sistema" lo consuma. Ese hallazgo cambió el plan: no hizo falta tocar ConsultorioWeb para esta primera entrega, solo construir del lado de Finanzas el código que llama a ese endpoint y guarda la información como Egresos.
+La decisión de arquitectura fue que Finanzas jala la información (pull) llamando al endpoint cuando alguien lo pide desde la pantalla de Nómina, en vez de que ConsultorioWeb empuje los datos automáticamente. Es más simple y no requiere que Finanzas exponga nada hacia afuera.
+
+20. Ampliar el modelo Egreso
+Para poder guardar los pagos de nómina como egresos normales, se agregaron campos nuevos al modelo Egreso en apps/finanzas/models.py:
+persona (de quién es el pago, como texto libre — no se buscó relacionarlo con una cuenta de usuario porque ConsultorioWeb no expone un identificador confiable del terapeuta).
+metodo_pago (transferencia, efectivo, cheque, otro) y estatus (pagado / pendiente) — estos dos se llenan desde Finanzas al momento de dispersar el dinero, no vienen de ConsultorioWeb.
+referencia_externa, un identificador único que amarra cada Egreso importado con el corte semanal de origen, para no duplicarlo si se vuelve a importar.
+También se agregó una categoría nueva, "Nómina terapeutas (ConsultorioWeb)", para diferenciar estos egresos de los que ya existían (renta, servicios, insumos, nómina administrativa).
+Un detalle importante: referencia_externa se definió con null=True además de unique=True. Esto es porque una restricción unique en la base de datos permite que haya muchas filas con el valor NULL, pero no permite dos filas con cadena vacía (''). Los egresos capturados a mano (renta, servicios, etc.) no tienen referencia externa, así que necesitan poder quedar en NULL sin chocar entre sí.
+La migración para estos cambios es apps/finanzas/migrations/0003_egreso_nomina_semanal.py.
+
+21. Crear el paquete apps/finanzas/integraciones
+Se creó un paquete nuevo, apps/finanzas/integraciones/, con dos archivos separados:
+consultorioweb.py — el cliente HTTP puro. Solo sabe llamar a la API de ConsultorioWeb con requests.get(...), mandar la llave en el header X-API-Key, y regresar la respuesta en JSON. No conoce nada de Egresos ni de reglas de negocio.
+importador_nomina.py — la lógica de negocio. Sabe qué hacer con la respuesta de la API: filtrar los cortes que ya están sellados, decidir cuántos Egresos crear por cada corte, y evitar duplicados.
+Esta separación (cliente HTTP vs. lógica de negocio) copia el mismo patrón que ya usa ConsultorioWeb internamente entre sus vistas y su capa de servicios.
+Para poder hacer la llamada HTTP se agregó la librería requests al archivo requirements.txt, y dos variables de configuración nuevas en config/settings.py: CONSULTORIOWEB_API_URL y CONSULTORIOWEB_API_KEY (leídas con os.environ.get, igual que el resto de la configuración del proyecto, sin un valor por defecto — si falta configurarlas, la integración debe fallar de forma clara en vez de intentar adivinar a dónde conectarse).
+
+22. Cómo se evita duplicar un pago al importar
+El endpoint de ConsultorioWeb regresa los cortes semanales con un id, y para cada terapeuta sellado puede generar hasta 3 movimientos separados:
+• Pago a terapeuta (el monto base de las sesiones atendidas).
+• Vale de gasolina / bono (el bono que ConsultorioWeb ya calcula por volumen de pacientes — en su propio reporte de dispersión también le llaman "Gasolina").
+• Bono extra (cualquier monto adicional manual que ConsultorioWeb haya sumado al total).
+Cada uno de estos movimientos se guarda con una referencia como consultorioweb:corte:9:base, consultorioweb:corte:9:bono, consultorioweb:corte:9:extra. Al importar, se usa get_or_create sobre ese campo: si ya existe un Egreso con esa referencia, no se crea otro. Esto significa que la pantalla de Nómina se puede recargar o el botón "Importar" se puede presionar varias veces sin riesgo de pagar dos veces el mismo concepto.
+Se probó este comportamiento de forma manual: se sembraron cortes de prueba en ConsultorioWeb (uno sellado y uno en borrador), se importaron desde Finanzas, se confirmó que el corte en borrador nunca aparece como importable, que los 3 movimientos se crean con los montos correctos, y que volver a importar el mismo corte no genera egresos repetidos.
+
+23. Nueva pantalla: Nómina semanal
+Se agregó una sexta sección al menú de Finanzas, "Nómina semanal" (apps/finanzas/templates/finanzas/nomina.html), con la misma vista del resto del módulo: un filtro por rango de fechas, una tabla con los cortes sellados que trae ConsultorioWeb (terapeuta, semana, pago base, bono, total y estatus), una casilla para seleccionar los que todavía no se han importado, y un botón "Importar seleccionados" que crea los Egresos correspondientes.
+Si ConsultorioWeb no responde (por ejemplo, si está caído o la llave configurada es incorrecta), la pantalla no se cae: muestra un aviso de error y deja reintentar más tarde.
+De paso se aprovechó para que la plantilla base de Finanzas (_base.html) supiera mostrar los mensajes de éxito/error de Django (messages), algo que ninguna de las otras 5 pantallas usaba todavía.
+
+24. Variables de entorno pendientes de configurar en Railway
+Este cambio no funciona solo con el código: hay que configurar variables de entorno en el panel de Railway de los dos servicios.
+• En portal_grupointra: agregar CONSULTORIOWEB_API_URL (la URL pública de ConsultorioWeb) y CONSULTORIOWEB_API_KEY (la misma llave que use ConsultorioWeb).
+• En ConsultorioWeb: confirmar que la variable DJANGO_API_KEY esté configurada con un valor real y seguro. Hoy, si esa variable no está puesta, el código de ConsultorioWeb cae en un valor de repuesto inseguro escrito directamente en su settings.py — hay que asegurarse de que eso no esté pasando en producción antes de depender de esta integración.
+Mientras esas variables no estén puestas en Railway, la pantalla de Nómina en producción va a mostrar el aviso de error de conexión (comportamiento esperado y ya probado, ver punto 23).
+
 Estado Actual Del Proyecto
 Hasta ahora el proyecto ya tiene:
-Proyecto Django funcional
-Base de datos lista
-App accounts creada
-Login visual creado
-CSS conectado
-Formulario con POST
-CSRF token
-Validación con usuarios reales de Django
-Mensaje de error
-Dashboard temporal
-Usuario administrador de prueba
-Protección básica del dashboard
+Proyecto Django funcional, organizado en apps/core y apps/finanzas
+Base de datos lista, con Railway/Postgres en producción y SQLite en local
+Login, dashboard y protección de sesión funcionando
+Módulo de Finanzas con tablero, ingresos, honorarios, donativos y reportes
+Nómina semanal de terapeutas importable desde ConsultorioWeb hacia Egresos, con protección contra duplicados
 
 Siguiente Paso Recomendado
-Agregar cierre de sesión:
-Logout
+Configurar en Railway las variables CONSULTORIOWEB_API_URL / CONSULTORIOWEB_API_KEY (ver punto 24) para que la integración funcione en producción, y validar con el equipo de Finanzas que los montos importados coinciden con lo que ya venían calculando a mano.
+
+Roadmap pendiente (fuera de alcance de esta entrega)
+El documento de requerimientos de Administración pedía 4 cosas; en esta entrega solo se resolvió la primera. Quedan pendientes para sesiones futuras:
+• Descarga de la nómina en imagen/PDF para solicitar la dispersión del dinero.
+• Importación del Reporte General de Recepción (citas, pacientes, métodos de pago) hacia Ingresos.
+• Módulo de Nómina Academia (maestros/docentes, con tabuladores propios, no existe ningún equivalente en ConsultorioWeb).
+• Flujo de "Ajuste" para corregir un corte ya sellado sin reescribir su historial — hoy ni ConsultorioWeb ni Finanzas lo soportan.
+• Cambiar de importación manual (botón) a un webhook desde ConsultorioWeb, o a una tarea programada (cron), si el volumen lo justifica.

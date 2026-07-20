@@ -201,3 +201,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Integración con ConsultorioWeb (importación de nómina semanal sellada,
+# apps/finanzas/integraciones/). Sin valor por defecto a propósito: si falta
+# configurar la variable en Railway, la integración debe fallar de forma
+# ruidosa en vez de intentar conectarse a algo adivinado.
+CONSULTORIOWEB_API_URL = os.environ.get('CONSULTORIOWEB_API_URL', '')
+CONSULTORIOWEB_API_KEY = os.environ.get('CONSULTORIOWEB_API_KEY', '')
+
