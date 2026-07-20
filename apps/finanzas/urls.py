@@ -10,4 +10,5 @@ urlpatterns = [
     path('nomina/', views.nomina_view, name='nomina'),
     path('donativos/', views.donativos_view, name='donativos'),
     path('reportes/', views.reportes_view, name='reportes'),
+    path('exportar/', views.exportar_view, name='exportar'),
 ]

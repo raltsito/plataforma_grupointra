@@ -1,7 +1,9 @@
 {% extends 'finanzas/_base.html' %}
 
 {% block titulo %}Reportes{% endblock %}
-{% block accion_primaria %}Exportar todo{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-exportar').showModal()">Exportar todo</button>
+{% endblock %}
 
 {% block contenido %}
 <div class="fin-two-col-b">
@@ -78,4 +80,30 @@
   </div>
 
 </div>
+
+<dialog id="dialog-exportar" class="fin-modal">
+  <form method="get" action="{% url 'finanzas:exportar' %}" class="fin-modal-form">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Exportar todo</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field">
+        <label for="exportar-desde">Desde</label>
+        <input type="date" id="exportar-desde" name="desde" class="fin-input">
+      </div>
+      <div class="fin-field">
+        <label for="exportar-hasta">Hasta</label>
+        <input type="date" id="exportar-hasta" name="hasta" class="fin-input">
+      </div>
+      <div class="fin-field fin-field-full" style="color:#9AA2B1; font-weight:500;">
+        Deja las fechas vacías para exportar todo el historial. Incluye ingresos, egresos, honorarios y donativos en un solo CSV.
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Descargar CSV</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}

@@ -1,4 +1,5 @@
-from datetime import timedelta
+import csv
+from datetime import date, timedelta
 from decimal import Decimal
 from functools import wraps
 
@@ -6,13 +7,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Sum
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.core.permisos.grupos import usuario_pertenece_a
 
-from .forms import EgresoForm, IngresoForm
+from .forms import DonativoForm, EgresoForm, IngresoForm
 from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
 from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
 from .models import Donativo, Egreso, Honorario, Ingreso
@@ -188,6 +190,9 @@ def tablero_view(request):
         'recientes': recientes,
         'meta_donativos': meta_donativos,
         'pendientes': pendientes,
+        'form_ingreso': IngresoForm(initial={'fecha': hoy}),
+        'form_egreso': EgresoForm(initial={'fecha': hoy}),
+        'form_donativo': DonativoForm(initial={'fecha': hoy}),
     }
     return render(request, 'finanzas/tablero.html', contexto)
 
@@ -305,6 +310,16 @@ def nomina_view(request):
 @acceso_finanzas_requerido
 def donativos_view(request):
     hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        form_donativo = DonativoForm(request.POST, request.FILES)
+        if form_donativo.is_valid():
+            form_donativo.save()
+            messages.success(request, 'Donativo registrado correctamente.')
+            return redirect('finanzas:donativos')
+    else:
+        form_donativo = DonativoForm(initial={'fecha': hoy})
+
     donativos_mes = Donativo.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month)
     donativos_anio = Donativo.objects.filter(fecha__year=hoy.year)
     stats = [
@@ -321,6 +336,7 @@ def donativos_view(request):
         'vista_actual': 'donativos',
         'stats': stats,
         'donativos': Donativo.objects.order_by('-fecha')[:200],
+        'form_donativo': form_donativo,
     }
     return render(request, 'finanzas/donativos.html', contexto)
 
@@ -365,3 +381,57 @@ def reportes_view(request):
         'resultado_negativo': resultado_ejercicio < 0,
     }
     return render(request, 'finanzas/reportes.html', contexto)
+
+
+def _fecha_desde_query(request, nombre):
+    valor = request.GET.get(nombre)
+    if not valor:
+        return None
+    try:
+        return date.fromisoformat(valor)
+    except ValueError:
+        return None
+
+
+@acceso_finanzas_requerido
+def exportar_view(request):
+    desde = _fecha_desde_query(request, 'desde')
+    hasta = _fecha_desde_query(request, 'hasta')
+
+    ingresos = Ingreso.objects.select_related('terapeuta').order_by('fecha')
+    egresos = Egreso.objects.order_by('fecha')
+    donativos = Donativo.objects.order_by('fecha')
+    honorarios = Honorario.objects.select_related('terapeuta', 'tabulador').order_by('periodo_anio', 'periodo_mes')
+
+    if desde:
+        ingresos = ingresos.filter(fecha__gte=desde)
+        egresos = egresos.filter(fecha__gte=desde)
+        donativos = donativos.filter(fecha__gte=desde)
+        honorarios = honorarios.filter(periodo_anio__gte=desde.year)
+    if hasta:
+        ingresos = ingresos.filter(fecha__lte=hasta)
+        egresos = egresos.filter(fecha__lte=hasta)
+        donativos = donativos.filter(fecha__lte=hasta)
+        honorarios = honorarios.filter(periodo_anio__lte=hasta.year)
+
+    filas = []
+    for i in ingresos:
+        filas.append(('Ingreso', i.get_concepto_display(), i.persona or (str(i.terapeuta) if i.terapeuta else ''), i.monto, i.get_estatus_display(), i.fecha))
+    for e in egresos:
+        filas.append(('Egreso', e.concepto, e.persona, e.monto, e.get_estatus_display(), e.fecha))
+    for d in donativos:
+        filas.append(('Donativo', f'Donativo {d.get_tipo_display().lower()}', d.donante_nombre, d.monto, d.get_estatus_cfdi_display(), d.fecha))
+    for h in honorarios:
+        fecha_periodo = date(h.periodo_anio, h.periodo_mes, 1)
+        if (desde and fecha_periodo < desde.replace(day=1)) or (hasta and fecha_periodo > hasta):
+            continue
+        filas.append(('Honorario', f'Honorario cat. {h.tabulador.categoria}', str(h.terapeuta), h.total, h.get_estatus_display(), fecha_periodo))
+    filas.sort(key=lambda f: f[5])
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="finanzas_movimientos.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['Tipo', 'Concepto', 'Persona', 'Monto', 'Estatus', 'Fecha'])
+    for tipo, concepto, persona, monto, estatus, fecha in filas:
+        writer.writerow([tipo, concepto, persona, monto, estatus, fecha.isoformat()])
+    return response

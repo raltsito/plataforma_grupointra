@@ -2,7 +2,9 @@
 {% load finanzas_extras %}
 
 {% block titulo %}Donativos y CFDI{% endblock %}
-{% block accion_primaria %}Registrar donativo{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-donativo').showModal()">Registrar donativo</button>
+{% endblock %}
 
 {% block contenido %}
 <div class="fin-stack">
@@ -49,7 +51,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="6" class="fin-empty">Todavía no hay donativos registrados. Agrégalos desde /admin/.</td></tr>
+          <tr><td colspan="6" class="fin-empty">Todavía no hay donativos registrados.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -57,4 +59,71 @@
   </div>
 
 </div>
+
+<dialog id="dialog-donativo" class="fin-modal">
+  <form method="post" enctype="multipart/form-data" class="fin-modal-form">
+    {% csrf_token %}
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar donativo</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form_donativo.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form_donativo.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_donativo.donante_nombre.id_for_label }}">Donante</label>
+        {{ form_donativo.donante_nombre }}
+        {% if form_donativo.donante_nombre.errors %}<span class="fin-field-error">{{ form_donativo.donante_nombre.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.donante_rfc.id_for_label }}">RFC</label>
+        {{ form_donativo.donante_rfc }}
+        {% if form_donativo.donante_rfc.errors %}<span class="fin-field-error">{{ form_donativo.donante_rfc.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.tipo.id_for_label }}">Tipo</label>
+        {{ form_donativo.tipo }}
+        {% if form_donativo.tipo.errors %}<span class="fin-field-error">{{ form_donativo.tipo.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.monto.id_for_label }}">Monto</label>
+        {{ form_donativo.monto }}
+        {% if form_donativo.monto.errors %}<span class="fin-field-error">{{ form_donativo.monto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.fecha.id_for_label }}">Fecha</label>
+        {{ form_donativo.fecha }}
+        {% if form_donativo.fecha.errors %}<span class="fin-field-error">{{ form_donativo.fecha.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.folio_cfdi.id_for_label }}">Folio CFDI</label>
+        {{ form_donativo.folio_cfdi }}
+        {% if form_donativo.folio_cfdi.errors %}<span class="fin-field-error">{{ form_donativo.folio_cfdi.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_donativo.estatus_cfdi.id_for_label }}">Estatus CFDI</label>
+        {{ form_donativo.estatus_cfdi }}
+        {% if form_donativo.estatus_cfdi.errors %}<span class="fin-field-error">{{ form_donativo.estatus_cfdi.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_donativo.archivo_xml.id_for_label }}">XML del CFDI</label>
+        {{ form_donativo.archivo_xml }}
+        {% if form_donativo.archivo_xml.errors %}<span class="fin-field-error">{{ form_donativo.archivo_xml.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_donativo.archivo_pdf.id_for_label }}">PDF del CFDI</label>
+        {{ form_donativo.archivo_pdf }}
+        {% if form_donativo.archivo_pdf.errors %}<span class="fin-field-error">{{ form_donativo.archivo_pdf.errors.0 }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_donativo.errors %}
+<script>document.getElementById('dialog-donativo').showModal();</script>
+{% endif %}
 {% endblock %}

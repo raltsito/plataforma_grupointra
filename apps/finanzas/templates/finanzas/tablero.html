@@ -1,7 +1,9 @@
 {% extends 'finanzas/_base.html' %}
 
 {% block titulo %}Tablero general{% endblock %}
-{% block accion_primaria %}Nuevo movimiento{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-movimiento').showModal()">Nuevo movimiento</button>
+{% endblock %}
 
 {% block contenido %}
 <div class="fin-stack">
@@ -126,4 +128,152 @@
   </div>
 
 </div>
+
+<dialog id="dialog-movimiento" class="fin-modal">
+  <div class="fin-modal-header">
+    <div class="fin-card-title">Nuevo movimiento</div>
+    <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+  </div>
+  <div style="padding: 18px 22px 0;">
+    <div class="fin-field">
+      <label for="tipo-mov">Tipo de movimiento</label>
+      <select id="tipo-mov" class="fin-input" onchange="finMostrarMovimiento(this.value)">
+        <option value="ingreso">Ingreso</option>
+        <option value="egreso">Egreso</option>
+        <option value="donativo">Donativo</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="fin-mov-form" data-tipo="ingreso">
+    <form method="post" action="{% url 'finanzas:ingresos' %}" class="fin-modal-form">
+      {% csrf_token %}
+      <div class="fin-modal-grid">
+        <div class="fin-field">
+          <label for="{{ form_ingreso.concepto.id_for_label }}">Concepto</label>
+          {{ form_ingreso.concepto }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_ingreso.terapeuta.id_for_label }}">Terapeuta</label>
+          {{ form_ingreso.terapeuta }}
+        </div>
+        <div class="fin-field fin-field-full">
+          <label for="{{ form_ingreso.persona.id_for_label }}">Alumno / Paciente</label>
+          {{ form_ingreso.persona }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_ingreso.monto.id_for_label }}">Monto</label>
+          {{ form_ingreso.monto }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_ingreso.estatus.id_for_label }}">Estatus</label>
+          {{ form_ingreso.estatus }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_ingreso.fecha.id_for_label }}">Fecha</label>
+          {{ form_ingreso.fecha }}
+        </div>
+      </div>
+      <div class="fin-modal-actions">
+        <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+        <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar ingreso</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="fin-mov-form" data-tipo="egreso" style="display:none;">
+    <form method="post" action="{% url 'finanzas:honorarios' %}" class="fin-modal-form">
+      {% csrf_token %}
+      <div class="fin-modal-grid">
+        <div class="fin-field fin-field-full">
+          <label for="{{ form_egreso.concepto.id_for_label }}">Concepto</label>
+          {{ form_egreso.concepto }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.categoria.id_for_label }}">Categoría</label>
+          {{ form_egreso.categoria }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.persona.id_for_label }}">Terapeuta / Proveedor</label>
+          {{ form_egreso.persona }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.monto.id_for_label }}">Monto</label>
+          {{ form_egreso.monto }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.metodo_pago.id_for_label }}">Método de pago</label>
+          {{ form_egreso.metodo_pago }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.estatus.id_for_label }}">Estatus</label>
+          {{ form_egreso.estatus }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_egreso.fecha.id_for_label }}">Fecha</label>
+          {{ form_egreso.fecha }}
+        </div>
+      </div>
+      <div class="fin-modal-actions">
+        <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+        <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar egreso</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="fin-mov-form" data-tipo="donativo" style="display:none;">
+    <form method="post" action="{% url 'finanzas:donativos' %}" enctype="multipart/form-data" class="fin-modal-form">
+      {% csrf_token %}
+      <div class="fin-modal-grid">
+        <div class="fin-field fin-field-full">
+          <label for="{{ form_donativo.donante_nombre.id_for_label }}">Donante</label>
+          {{ form_donativo.donante_nombre }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.donante_rfc.id_for_label }}">RFC</label>
+          {{ form_donativo.donante_rfc }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.tipo.id_for_label }}">Tipo</label>
+          {{ form_donativo.tipo }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.monto.id_for_label }}">Monto</label>
+          {{ form_donativo.monto }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.fecha.id_for_label }}">Fecha</label>
+          {{ form_donativo.fecha }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.folio_cfdi.id_for_label }}">Folio CFDI</label>
+          {{ form_donativo.folio_cfdi }}
+        </div>
+        <div class="fin-field">
+          <label for="{{ form_donativo.estatus_cfdi.id_for_label }}">Estatus CFDI</label>
+          {{ form_donativo.estatus_cfdi }}
+        </div>
+        <div class="fin-field fin-field-full">
+          <label for="{{ form_donativo.archivo_xml.id_for_label }}">XML del CFDI</label>
+          {{ form_donativo.archivo_xml }}
+        </div>
+        <div class="fin-field fin-field-full">
+          <label for="{{ form_donativo.archivo_pdf.id_for_label }}">PDF del CFDI</label>
+          {{ form_donativo.archivo_pdf }}
+        </div>
+      </div>
+      <div class="fin-modal-actions">
+        <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+        <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar donativo</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+<script>
+function finMostrarMovimiento(tipo) {
+  document.querySelectorAll('#dialog-movimiento .fin-mov-form').forEach(function (el) {
+    el.style.display = (el.dataset.tipo === tipo) ? '' : 'none';
+  });
+}
+</script>
 {% endblock %}
