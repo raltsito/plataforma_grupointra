@@ -1,0 +1,124 @@
+{% load finanzas_extras static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter; margin: 1.6cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #1B2C4F; }
+  .encabezado { width: 100%; margin-bottom: 10px; }
+  .encabezado table { width: 100%; }
+  .encabezado img { height: 42px; }
+  .titulo { font-size: 15pt; font-weight: bold; color: #1B2C4F; }
+  .subtitulo { font-size: 9pt; color: #555; margin-top: 2px; }
+  .estatus-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 10px;
+    font-size: 8pt; font-weight: bold; color: #fff;
+  }
+  .estatus-pagado { background-color: #1F8A5B; }
+  .estatus-pendiente { background-color: #C9622B; }
+  table.fin-pdf-tabla { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.fin-pdf-tabla th {
+    background-color: #1B2C4F; color: #fff; text-align: left;
+    padding: 5px 6px; font-size: 8pt;
+  }
+  table.fin-pdf-tabla td {
+    padding: 5px 6px; border-bottom: 1px solid #E6EAF2; font-size: 8.5pt;
+  }
+  table.fin-pdf-tabla td.num { text-align: right; }
+  table.fin-pdf-tabla tfoot td { font-weight: bold; border-top: 2px solid #1B2C4F; }
+  .fin-pdf-totales { width: 100%; margin-top: 14px; }
+  .fin-pdf-totales table { width: 100%; border-collapse: collapse; }
+  .fin-pdf-totales td {
+    background-color: #F3F5FA; padding: 8px; text-align: center;
+    border: 1px solid #E6EAF2;
+  }
+  .fin-pdf-totales .label { display: block; font-size: 7.5pt; color: #555; margin-bottom: 3px; }
+  .fin-pdf-totales .valor { display: block; font-size: 11pt; font-weight: bold; color: #1B2C4F; }
+  .fin-pdf-pie { margin-top: 16px; font-size: 8pt; color: #888; }
+</style>
+</head>
+<body>
+
+  <div class="encabezado">
+    <table>
+      <tr>
+        <td style="width: 60px;"><img src="{% static 'core/images/intra-logo.png' %}" alt="INTRA"></td>
+        <td>
+          <div class="titulo">Nómina Academia</div>
+          <div class="subtitulo">
+            {{ nomina.maestro.nombre }} · periodo {{ nomina.periodo_mes }}/{{ nomina.periodo_anio }}
+          </div>
+        </td>
+        <td style="text-align: right;">
+          <span class="estatus-badge {% if nomina.estatus == 'pendiente' %}estatus-pendiente{% else %}estatus-pagado{% endif %}">
+            {{ nomina.get_estatus_display }}
+          </span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <table class="fin-pdf-tabla">
+    <thead>
+      <tr>
+        <th>Docente</th>
+        <th>Concepto</th>
+        <th class="num">Cantidad</th>
+        <th class="num">Tarifa</th>
+        <th class="num">Subtotal</th>
+        <th>Método</th>
+        <th>Estatus</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in conceptos %}
+      <tr>
+        <td>{{ nomina.maestro.nombre }}</td>
+        <td>{{ c.get_concepto_display }}{% if c.descripcion %} · {{ c.descripcion }}{% endif %}</td>
+        <td class="num">{{ c.cantidad }}</td>
+        <td class="num">{{ c.tarifa|dinero }}</td>
+        <td class="num">{{ c.subtotal|dinero }}</td>
+        <td>{{ nomina.get_metodo_pago_display|default:'Pendiente de asignar' }}</td>
+        <td>{{ nomina.get_estatus_display }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">Sin conceptos capturados.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">TOTAL A PAGAR</td>
+        <td class="num">{{ nomina.total|dinero }}</td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="fin-pdf-totales">
+    <table>
+      <tr>
+        <td>
+          <span class="label">Total por docente</span>
+          <span class="valor">{{ nomina.total|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Total transferencia</span>
+          <span class="valor">{{ total_transferencia|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Total efectivo</span>
+          <span class="valor">{{ total_efectivo|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Pendiente</span>
+          <span class="valor">{{ total_pendiente|dinero }}</span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="fin-pdf-pie">Generado el {{ generado_en|date:'d/m/Y H:i' }}</div>
+
+</body>
+</html>

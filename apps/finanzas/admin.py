@@ -1,6 +1,9 @@
 from django.contrib import admin
 
-from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, Tabulador
+from .models import (
+    CitaRecepcion, ConceptoNominaAcademia, Donativo, Egreso, Honorario,
+    Ingreso, Maestro, NominaAcademia, Tabulador, TabuladorAcademia,
+)
 
 
 @admin.register(Tabulador)
@@ -45,3 +48,31 @@ class DonativoAdmin(admin.ModelAdmin):
     list_display = ('donante_nombre', 'tipo', 'monto', 'folio_cfdi', 'estatus_cfdi', 'fecha')
     list_filter = ('tipo', 'estatus_cfdi', 'fecha')
     search_fields = ('donante_nombre', 'donante_rfc', 'folio_cfdi')
+
+
+@admin.register(Maestro)
+class MaestroAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'activo')
+    list_filter = ('activo',)
+    search_fields = ('nombre',)
+
+
+@admin.register(TabuladorAcademia)
+class TabuladorAcademiaAdmin(admin.ModelAdmin):
+    list_display = ('concepto', 'monto_unidad', 'vigente_desde')
+    list_filter = ('concepto',)
+    ordering = ('-vigente_desde',)
+
+
+class ConceptoNominaAcademiaInline(admin.TabularInline):
+    model = ConceptoNominaAcademia
+    extra = 0
+    readonly_fields = ('tabulador', 'tarifa', 'subtotal')
+
+
+@admin.register(NominaAcademia)
+class NominaAcademiaAdmin(admin.ModelAdmin):
+    list_display = ('maestro', 'periodo_mes', 'periodo_anio', 'metodo_pago', 'estatus', 'total')
+    list_filter = ('estatus', 'periodo_anio', 'periodo_mes')
+    readonly_fields = ('total',)
+    inlines = [ConceptoNominaAcademiaInline]

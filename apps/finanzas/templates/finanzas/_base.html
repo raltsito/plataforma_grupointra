@@ -43,6 +43,10 @@
         <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="12" y2="12"></line></svg></span>
         <span>Reporte Recepción</span>
       </a>
+      <a href="{% url 'finanzas:nomina_academia' %}" class="fin-nav-item{% if vista_actual == 'nomina_academia' %} active{% endif %}">
+        <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M6 10l6 6 6-6"></path><line x1="5" y1="20" x2="19" y2="20"></line></svg></span>
+        <span>Nómina Academia</span>
+      </a>
       <a href="{% url 'finanzas:donativos' %}" class="fin-nav-item{% if vista_actual == 'donativos' %} active{% endif %}">
         <span class="fin-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"></path></svg></span>
         <span>Donativos y CFDI</span>

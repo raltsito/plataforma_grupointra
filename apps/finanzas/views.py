@@ -9,18 +9,19 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Sum
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.core.permisos.grupos import usuario_pertenece_a
 
-from .forms import DonativoForm, EgresoForm, IngresoForm, ReporteRecepcionUploadForm
+from .forms import DonativoForm, EgresoForm, IngresoForm, NominaAcademiaCaptureForm, ReporteRecepcionUploadForm
 from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
 from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
 from .integraciones.importador_recepcion import importar_citas
 from .integraciones.reporte_recepcion import ReporteRecepcionError, leer_reporte_api, leer_reporte_excel
-from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso
+from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, NominaAcademia
+from .nomina_academia import NominaAcademiaError, capturar_nomina_academia
 from .pdfs import render_pdf
 from .reportes_nomina import resumen_nomina_semanal
 
@@ -459,6 +460,70 @@ def donativos_view(request):
         'form_donativo': form_donativo,
     }
     return render(request, 'finanzas/donativos.html', contexto)
+
+
+@acceso_finanzas_requerido
+def nomina_academia_view(request):
+    """Captura la nómina de Academia por maestro/periodo: selecciona
+    maestro, captura cantidades por concepto (horas clase, supervisión,
+    mesa de trabajo, más un concepto manual autorizado opcional), calcula
+    el total con los tabuladores vigentes y genera un Egreso por concepto
+    (sección 6 del documento de requerimientos)."""
+    hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        form = NominaAcademiaCaptureForm(request.POST)
+        if form.is_valid():
+            try:
+                nomina = capturar_nomina_academia(
+                    maestro=form.cleaned_data['maestro'],
+                    periodo_mes=int(form.cleaned_data['periodo_mes']),
+                    periodo_anio=form.cleaned_data['periodo_anio'],
+                    metodo_pago=form.cleaned_data['metodo_pago'],
+                    cantidades=form.cantidades(),
+                    concepto_manual_descripcion=form.cleaned_data['concepto_manual_descripcion'],
+                    concepto_manual_monto=form.cleaned_data['concepto_manual_monto'],
+                )
+                messages.success(
+                    request,
+                    f"Nómina de Academia capturada: {nomina.maestro} · "
+                    f"{nomina.periodo_mes}/{nomina.periodo_anio} · total {_dinero(nomina.total)}.",
+                )
+            except NominaAcademiaError as exc:
+                messages.error(request, str(exc))
+            return redirect('finanzas:nomina_academia')
+    else:
+        form = NominaAcademiaCaptureForm(initial={'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+
+    nominas = (
+        NominaAcademia.objects.select_related('maestro')
+        .prefetch_related('conceptos')
+        .order_by('-periodo_anio', '-periodo_mes')[:50]
+    )
+    contexto = {
+        'vista_actual': 'nomina_academia',
+        'form': form,
+        'nominas': nominas,
+    }
+    return render(request, 'finanzas/nomina_academia.html', contexto)
+
+
+@acceso_finanzas_requerido
+def nomina_academia_descargar_view(request, nomina_id):
+    nomina = get_object_or_404(
+        NominaAcademia.objects.select_related('maestro').prefetch_related('conceptos'), pk=nomina_id,
+    )
+    es_pendiente = nomina.estatus == NominaAcademia.Estatus.PENDIENTE
+    contexto = {
+        'nomina': nomina,
+        'conceptos': nomina.conceptos.all(),
+        'total_transferencia': nomina.total if nomina.metodo_pago == NominaAcademia.MetodoPago.TRANSFERENCIA else Decimal('0'),
+        'total_efectivo': nomina.total if nomina.metodo_pago == NominaAcademia.MetodoPago.EFECTIVO else Decimal('0'),
+        'total_pendiente': nomina.total if es_pendiente else Decimal('0'),
+        'generado_en': timezone.now(),
+    }
+    nombre_archivo = f'nomina_academia_{nomina.maestro.nombre}_{nomina.periodo_mes}_{nomina.periodo_anio}.pdf'.replace(' ', '_')
+    return render_pdf('finanzas/nomina_academia_pdf.html', contexto, nombre_archivo)
 
 
 @acceso_finanzas_requerido

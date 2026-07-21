@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
@@ -122,6 +125,7 @@ class Egreso(models.Model):
         INSUMOS = 'insumos', 'Insumos'
         NOMINA_ADMIN = 'nomina_admin', 'Nómina administrativa'
         NOMINA_TERAPEUTAS = 'nomina_terapeutas', 'Nómina terapeutas (ConsultorioWeb)'
+        NOMINA_ACADEMIA = 'nomina_academia', 'Nómina Academia'
 
     class MetodoPago(models.TextChoices):
         TRANSFERENCIA = 'transferencia', 'Transferencia'
@@ -224,3 +228,120 @@ class Donativo(models.Model):
 
     def __str__(self):
         return f'{self.donante_nombre} · {self.monto} · {self.fecha}'
+
+
+class Maestro(models.Model):
+    """Docente de Academia. No es un FK a Usuario del portal (igual que
+    Egreso.persona / CitaRecepcion.terapeuta): hoy no existen cuentas de
+    Usuario para el personal de Academia."""
+
+    nombre = models.CharField(max_length=150)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Maestro (Academia)'
+        verbose_name_plural = 'Maestros (Academia)'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
+class TabuladorAcademia(models.Model):
+    """Tabulador de Academia por concepto (horas clase, supervisión, mesa de
+    trabajo). Versionado igual que Tabulador: un cambio de tarifa es una fila
+    nueva, nunca se edita una vigente, para no alterar nóminas ya calculadas."""
+
+    class Concepto(models.TextChoices):
+        HORAS_CLASE = 'horas_clase', 'Horas clase'
+        SUPERVISION = 'supervision', 'Supervisión'
+        MESA_TRABAJO = 'mesa_trabajo', 'Mesa de trabajo'
+
+    concepto = models.CharField(max_length=20, choices=Concepto.choices)
+    monto_unidad = models.DecimalField(max_digits=10, decimal_places=2)
+    vigente_desde = models.DateField()
+
+    class Meta:
+        verbose_name = 'Tabulador de Academia'
+        verbose_name_plural = 'Tabuladores de Academia'
+        ordering = ['-vigente_desde']
+
+    def __str__(self):
+        return f'{self.get_concepto_display()} · ${self.monto_unidad} · vigente desde {self.vigente_desde}'
+
+    @classmethod
+    def vigente(cls, concepto, fecha):
+        return cls.objects.filter(concepto=concepto, vigente_desde__lte=fecha).order_by('-vigente_desde').first()
+
+
+class NominaAcademia(models.Model):
+    """Cabecera de la nómina de un maestro en un periodo (mes/año). El total
+    se congela al capturar los conceptos (ver nomina_academia.py) y no
+    cambia si el tabulador se actualiza después — misma regla que Honorario."""
+
+    class MetodoPago(models.TextChoices):
+        TRANSFERENCIA = 'transferencia', 'Transferencia'
+        EFECTIVO = 'efectivo', 'Efectivo'
+
+    class Estatus(models.TextChoices):
+        PAGADO = 'pagado', 'Pagado'
+        PENDIENTE = 'pendiente', 'Pendiente'
+
+    maestro = models.ForeignKey(Maestro, on_delete=models.PROTECT, related_name='nominas')
+    periodo_mes = models.PositiveSmallIntegerField()
+    periodo_anio = models.PositiveSmallIntegerField()
+    metodo_pago = models.CharField(max_length=20, choices=MetodoPago.choices, blank=True)
+    estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PENDIENTE)
+    total = models.DecimalField(max_digits=10, decimal_places=2, editable=False, default=Decimal('0'))
+
+    class Meta:
+        verbose_name = 'Nómina Academia'
+        verbose_name_plural = 'Nóminas Academia'
+        ordering = ['-periodo_anio', '-periodo_mes']
+        # Evita duplicar nómina por docente y periodo (sección 6.1 del
+        # documento); una corrección posterior es un ajuste (Fase 4), no una
+        # segunda captura.
+        unique_together = ('maestro', 'periodo_mes', 'periodo_anio')
+
+    def __str__(self):
+        return f'{self.maestro} · {self.periodo_mes}/{self.periodo_anio}'
+
+
+class ConceptoNominaAcademia(models.Model):
+    """Línea de una NominaAcademia. La tarifa y el subtotal se calculan una
+    sola vez al crearse (igual que Honorario.bono/total): la tarifa se toma
+    del TabuladorAcademia vigente en el periodo, salvo para el concepto
+    'manual', donde la captura la persona que autoriza."""
+
+    class Concepto(models.TextChoices):
+        HORAS_CLASE = 'horas_clase', 'Horas clase'
+        SUPERVISION = 'supervision', 'Supervisión'
+        MESA_TRABAJO = 'mesa_trabajo', 'Mesa de trabajo'
+        MANUAL = 'manual', 'Concepto manual autorizado'
+
+    nomina = models.ForeignKey(NominaAcademia, on_delete=models.CASCADE, related_name='conceptos')
+    concepto = models.CharField(max_length=20, choices=Concepto.choices)
+    descripcion = models.CharField(max_length=150, blank=True, help_text='Solo para el concepto manual autorizado.')
+    cantidad = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal('1'))
+    tabulador = models.ForeignKey(
+        TabuladorAcademia, null=True, blank=True, on_delete=models.PROTECT,
+        editable=False, related_name='conceptos_generados',
+    )
+    tarifa = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+
+    class Meta:
+        verbose_name = 'Concepto de Nómina Academia'
+        verbose_name_plural = 'Conceptos de Nómina Academia'
+
+    def __str__(self):
+        return f'{self.get_concepto_display()} · {self.nomina}'
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and self.concepto != self.Concepto.MANUAL:
+            fecha_ref = date(self.nomina.periodo_anio, self.nomina.periodo_mes, 1)
+            self.tabulador = TabuladorAcademia.vigente(self.concepto, fecha_ref)
+            self.tarifa = self.tabulador.monto_unidad if self.tabulador else Decimal('0')
+        if self._state.adding:
+            self.subtotal = self.cantidad * self.tarifa
+        super().save(*args, **kwargs)

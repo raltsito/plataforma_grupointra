@@ -11,13 +11,13 @@ Estado tomado el 2026-07-21 comparando el documento contra el codigo de `apps/fi
 | 1 | Sellar terapeuta en nomina semanal crea egreso automatico | Hecho |
 | 2 | Pago base, bono y vale de gasolina se registran por separado | Hecho |
 | 3 | Metodo de pago: transferencia, efectivo, pendiente, pagado | Hecho |
-| 4 | Nomina descargada (imagen/PDF) con periodo, fecha, estatus, detalle y totales | Falta |
-| 5 | Reporte General de Recepcion importado/sincronizado sin copiar a otra plantilla | Falta |
-| 6 | Datos de recepcion alimentan ingresos, pacientes, terapeutas, ranking, metodos de pago | Falta |
-| 7 | Nomina Academia: seleccionar maestro y capturar conceptos por cantidad | Falta |
-| 8 | Nomina Academia calcula automaticamente con tabuladores configurables | Falta |
-| 9 | Bloqueo de duplicados por periodo/persona/concepto | Parcial (solo ConsultorioWeb import + Honorario mensual) |
-| 10 | Ajustes posteriores se registran como "Ajuste", sin reescribir historial | Falta |
+| 4 | Nomina descargada (imagen/PDF) con periodo, fecha, estatus, detalle y totales | Hecho (2026-07-21, Fase 1) |
+| 5 | Reporte General de Recepcion importado/sincronizado sin copiar a otra plantilla | Hecho (2026-07-21, Fase 2b) |
+| 6 | Datos de recepcion alimentan ingresos, pacientes, terapeutas, ranking, metodos de pago | Hecho (2026-07-21, Fase 2) |
+| 7 | Nomina Academia: seleccionar maestro y capturar conceptos por cantidad | Hecho (2026-07-21, Fase 3) |
+| 8 | Nomina Academia calcula automaticamente con tabuladores configurables | Hecho (2026-07-21, Fase 3) |
+| 9 | Bloqueo de duplicados por periodo/persona/concepto | Parcial (cubre ConsultorioWeb import, Honorario mensual, CitaRecepcion y NominaAcademia; falta generalizar en un solo helper) |
+| 10 | Ajustes posteriores se registran como "Ajuste", sin reescribir historial | Falta (Fase 4) |
 
 Lo ya construido vive en `apps/finanzas/integraciones/consultorioweb.py` e `importador_nomina.py` (import de cortes semanales via API de ConsultorioWeb) y en el modelo `Egreso` (campos `metodo_pago`, `estatus`, `referencia_externa`).
 
@@ -53,16 +53,21 @@ Lo ya construido vive en `apps/finanzas/integraciones/consultorioweb.py` e `impo
 - [x] `apps/finanzas/integraciones/reporte_recepcion.py`: nueva `leer_reporte_api()` que llama esa funcion y normaliza al mismo formato que `leer_reporte_excel()` (ajustado `_fecha()` para aceptar tanto `DD/MM/YYYY` del Excel como ISO de la API; ajustado `_estatus()` para aceptar tanto "Si asistio" (Excel) como `si_asistio` (código de la API)).
 - [x] Vista `reporte_recepcion_view` actualizada: la API es la via principal (formulario "Sincronizar con ConsultorioWeb" con rango de fechas, deshabilitado si `CONSULTORIOWEB_API_URL` no esta configurado), el Excel queda como respaldo manual colapsado en un `<details>`.
 - [x] Probado extremo a extremo levantando el servidor de ConsultorioWeb en local (puerto 8811, base de datos demo con datos de abril 2026): sincronizacion inicial (44 citas nuevas + 2 actualizadas por llaves duplicadas en los datos demo, 7 generaron ingreso), re-sincronizacion idempotente (0 nuevas, sin duplicar), y pantalla con ranking funcionando con datos reales de esa base.
-- [ ] Pendiente: definir y configurar `CONSULTORIOWEB_API_URL` / `CONSULTORIOWEB_API_KEY` en el entorno real (Railway) para produccion — hoy son env vars vacias en `config/settings.py`.
-- [ ] Pendiente: probar la sincronizacion desde el navegador real (no solo via test client) contra el servidor de ConsultorioWeb en el entorno que corresponda.
+- [x] Variables de Railway verificadas (no requirieron cambio): `CONSULTORIOWEB_API_URL`/`CONSULTORIOWEB_API_KEY` (proyecto CentralizacionIntra) ya coincidian con `RAILWAY_PUBLIC_DOMAIN`/`DJANGO_API_KEY` del proyecto SistemaIntra (ConsultorioWeb) desde la integracion previa de nomina semanal.
+- [x] **Desplegado a produccion (2026-07-21):**
+  - ConsultorioWeb: commit `6bb2ec79` + `railway up` en proyecto SistemaIntra/servicio web. Verificado en vivo: `https://www.agenda.intra.org.mx/api/reporte-general/` responde 200 con 295 citas reales del periodo 2026-07-01 a 2026-07-21 (mismo total que el Excel de referencia). Push a GitHub bloqueado por el clasificador de seguridad de la sesion — el commit existe localmente en `C:\Users\carlo\Documents\Freelancer\ConsultorioWeb` pero no en GitHub todavia; pendiente que el usuario haga `git push origin main` ahi manualmente.
+  - portal_grupointra: commit `a1cb485`, push a GitHub exitoso, y `railway up` en proyecto CentralizacionIntra. Migracion `0004_citarecepcion` aplicada en produccion sin errores, servidor arriba (`https://portal.grupointra.mx/finanzas/` responde 200).
+- [ ] Pendiente: probar la sincronizacion desde el navegador real (no solo via test client / curl) con sesion de usuario real del grupo Finanzas.
 
-### Fase 3 — Nomina Academia (criterios 7, 8)
-- [ ] Modelo `Maestro`/`Docente` (activo, filtrable por nombre) — catalogo simple, alta/seleccion.
-- [ ] Modelo `TabuladorAcademia` (monto por concepto: horas clase, supervision, mesa de trabajo, otros; versionado por fecha de vigencia, igual patron que `Tabulador` de terapeutas — nunca editar uno vigente).
-- [ ] Modelo `NominaAcademia` (o conceptos dentro de un solo modelo con FK a maestro + periodo + concepto + cantidad + tarifa congelada + subtotal), calculo automatico cantidad x tarifa, metodo de pago (transferencia/efectivo/pendiente/pagado).
-- [ ] Vista con flujo: entrar al modulo, elegir periodo, elegir maestro, submenu de conceptos, capturar cantidades, calcular total automatico, guardar como egreso de Academia (categoria nueva en `Egreso`, ej. `nomina_academia`), boton sellar.
-- [ ] Descarga en imagen/PDF (reusar la solucion de la Fase 1): encabezado (nomina Academia, periodo, fecha de pago, estatus, usuario que genera), tabla (docente, concepto, cantidad, tarifa, subtotal, metodo, estatus), totales (por docente, transferencia, efectivo, pendiente, general).
-- [ ] Validacion: evitar duplicar nomina por docente/periodo/concepto salvo que se registre como ajuste (depende de Fase 4).
+### Fase 3 — Nomina Academia (criterios 7, 8) — COMPLETADA (2026-07-21)
+- [x] Modelo `Maestro` (nombre, activo) — catalogo simple, sin FK a Usuario (igual que Egreso.persona / CitaRecepcion.terapeuta: no existen cuentas de Usuario para Academia). Alta/edicion via `/admin/`.
+- [x] Modelo `TabuladorAcademia` (concepto: horas_clase/supervision/mesa_trabajo, monto_unidad, vigente_desde) — versionado igual que `Tabulador` de terapeutas, con `TabuladorAcademia.vigente(concepto, fecha)` para tomar la tarifa vigente en el periodo capturado.
+- [x] Modelo `NominaAcademia` (cabecera: maestro, periodo_mes, periodo_anio, metodo_pago, estatus, total congelado) + `ConceptoNominaAcademia` (linea: concepto, descripcion para el concepto manual, cantidad, tabulador usado, tarifa y subtotal congelados en `save()` — mismo patron que `Honorario.bono/total`). Incluye el "concepto manual autorizado" del documento (descripcion + monto libre, sin tabulador).
+- [x] `apps/finanzas/nomina_academia.py::capturar_nomina_academia()`: crea la cabecera + lineas, calcula el total, y genera **un Egreso separado por concepto** (categoria `nomina_academia` nueva en `Egreso.Categoria`) — mismo patron de desglose que la nomina semanal de terapeutas. Bloquea capturar dos veces la misma nomina de un maestro/periodo (`NominaAcademiaError`).
+- [x] Vista `nomina_academia_view` (`finanzas/nomina-academia/`): modal de captura (maestro, mes, año, metodo de pago, cantidades por concepto, concepto manual opcional) + tabla de nominas ya capturadas con boton de descarga. Formulario (`NominaAcademiaCaptureForm`) exige al menos un concepto capturado.
+- [x] Descarga en PDF (`nomina_academia_descargar_view`, reusando `render_pdf` de la Fase 1): encabezado (Nomina Academia, maestro, periodo, estatus), tabla por concepto (docente, concepto, cantidad, tarifa, subtotal, metodo, estatus) con fila TOTAL A PAGAR, y totales (por docente, transferencia, efectivo, pendiente).
+- [x] Probado extremo a extremo: captura con tabuladores reales (3 horas clase × $150 + 1 mesa de trabajo × $200 = $650, calculo verificado), 2 Egresos generados correctamente, segunda captura del mismo maestro/periodo bloqueada, captura solo con concepto manual ($500), formulario vacio rechazado sin crear nomina, y PDF descargado y verificado visualmente.
+- [ ] Nota: la validacion de duplicados aqui es "todo o nada" por maestro/periodo (no permite re-capturar ni agregar conceptos sueltos despues) — la Fase 4 (estados + ajustes) debe agregar la forma correcta de corregir una nomina ya capturada.
 
 ### Fase 4 — Estados, botones y controles unificados (criterio 10, complementa el 9)
 - [ ] Introducir estado `Sellado` y `Ajuste` (hoy solo existe Pagado/Pendiente/Parcial) en los modelos relevantes: `Egreso`, `Honorario`, y los nuevos de Academia/Recepcion.
