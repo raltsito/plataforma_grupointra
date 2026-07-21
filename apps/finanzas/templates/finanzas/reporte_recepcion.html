@@ -1,0 +1,119 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Reporte General de Recepción{% endblock %}
+
+{% block acciones_header %}
+<button type="submit" form="form-sincronizar-recepcion" class="fin-btn-primary fin-btn-activo" {% if not api_configurada %}disabled title="Configura CONSULTORIOWEB_API_URL / CONSULTORIOWEB_API_KEY para sincronizar"{% endif %}>Sincronizar con ConsultorioWeb</button>
+{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-banner">
+    <span class="fin-banner-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4z"></path><path d="M4 12h16v8H4z"></path><line x1="8" y1="16" x2="16" y2="16"></line></svg>
+    </span>
+    <div class="fin-banner-text"><b>Solo cuenta como ingreso una cita en estatus "Sí asistió"</b>, con método de pago distinto de "Pase" y costo mayor a $0. Si vuelves a sincronizar o importar el mismo periodo con un estatus corregido, el ingreso se actualiza o se elimina automáticamente.</div>
+  </div>
+
+  <form id="form-sincronizar-recepcion" method="post" class="fin-card fin-card-pad fin-filter-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="sincronizar">
+    <div class="fin-field"><label>Desde</label><input type="date" name="fecha_inicio" value="{{ fecha_inicio }}"></div>
+    <div class="fin-field"><label>Hasta</label><input type="date" name="fecha_fin" value="{{ fecha_fin }}"></div>
+    {% if not api_configurada %}<span class="fin-empty">ConsultorioWeb no está configurado en este entorno.</span>{% endif %}
+  </form>
+
+  <details class="fin-card fin-card-pad">
+    <summary style="cursor:pointer; font-weight:600;">Respaldo manual: subir Excel del Reporte General</summary>
+    <form id="form-importar-recepcion" method="post" enctype="multipart/form-data" class="fin-filter-form" style="margin-top:12px;">
+      {% csrf_token %}
+      <div class="fin-field">
+        <label>{{ form_upload.archivo.label }}</label>
+        {{ form_upload.archivo }}
+      </div>
+      {% if form_upload.archivo.errors %}<div class="fin-alert fin-alert-error">{{ form_upload.archivo.errors|join:' ' }}</div>{% endif %}
+      <button type="submit" class="fin-btn-outline">Importar Excel</button>
+    </form>
+  </details>
+
+  <div class="fin-kpi-grid">
+    <div class="fin-stat">
+      <div class="fin-stat-label">Citas importadas</div>
+      <div class="fin-stat-value">{{ total_citas }}</div>
+    </div>
+    <div class="fin-stat">
+      <div class="fin-stat-label">Citas con asistencia confirmada</div>
+      <div class="fin-stat-value">{{ total_asistidas }}</div>
+    </div>
+    <div class="fin-stat">
+      <div class="fin-stat-label">Ingresos generados desde Recepción</div>
+      <div class="fin-stat-value">{{ total_ingresos_generados }}</div>
+    </div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar"><div class="fin-card-title">Ranking de terapeutas (por ingreso generado)</div></div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead><tr><th>Terapeuta</th><th class="num">Citas atendidas</th><th class="num">Total generado</th></tr></thead>
+        <tbody>
+          {% for fila in ranking %}
+          <tr><td>{{ fila.terapeuta }}</td><td class="num">{{ fila.citas_atendidas }}</td><td class="num">{{ fila.total_generado_fmt }}</td></tr>
+          {% empty %}
+          <tr><td colspan="3" class="fin-empty">Todavía no hay citas importadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar"><div class="fin-card-title">Comparativo por método de pago</div></div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead><tr><th>Método</th><th class="num">Citas</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          {% for fila in por_metodo %}
+          <tr><td>{{ fila.metodo_pago_display }}</td><td class="num">{{ fila.citas }}</td><td class="num">{{ fila.total_fmt }}</td></tr>
+          {% empty %}
+          <tr><td colspan="3" class="fin-empty">Todavía no hay citas importadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar"><div class="fin-card-title">Últimas citas importadas</div></div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Paciente</th><th>Terapeuta</th><th>Servicio</th>
+            <th>Estatus</th><th>Método</th><th class="num">Costo</th><th>Ingreso</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cita in ultimas_citas %}
+          <tr>
+            <td>{{ cita.fecha }} {{ cita.hora }}</td>
+            <td>{{ cita.paciente }}</td>
+            <td>{{ cita.terapeuta }}</td>
+            <td>{{ cita.servicio }}</td>
+            <td>{{ cita.get_estatus_display }}</td>
+            <td>{{ cita.get_metodo_pago_display|default:'—' }}</td>
+            <td class="num">{{ cita.costo|dinero }}</td>
+            <td>{% if cita.ingreso_id %}<span class="fin-badge fin-badge-vigente">Sí</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="fin-empty">No hay citas importadas todavía.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -21,6 +21,7 @@
     <div class="fin-field"><label>Desde</label><input type="date" name="fecha_inicio" value="{{ fecha_inicio }}"></div>
     <div class="fin-field"><label>Hasta</label><input type="date" name="fecha_fin" value="{{ fecha_fin }}"></div>
     <button type="submit" class="fin-btn-outline">Buscar cortes</button>
+    <a class="fin-btn-outline" href="{% url 'finanzas:nomina_descargar' %}?fecha_inicio={{ fecha_inicio }}&fecha_fin={{ fecha_fin }}">Descargar nómina (PDF)</a>
   </form>
 
   {% if error %}

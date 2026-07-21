@@ -63,6 +63,58 @@ class Ingreso(models.Model):
         return f'{self.get_concepto_display()} · {self.monto} · {self.fecha}'
 
 
+class CitaRecepcion(models.Model):
+    """Fila del Reporte General de Recepción (agenda.intra.org.mx),
+    importada desde el Excel exportado por esa plataforma. Guarda la cita tal
+    cual, y opcionalmente queda ligada al Ingreso que generó (solo las citas
+    que cuentan como ingreso real lo tienen) — ver
+    integraciones/importador_recepcion.py."""
+
+    class Estatus(models.TextChoices):
+        CONFIRMADA = 'confirmada', 'Confirmada'
+        SIN_CONFIRMAR = 'sin_confirmar', 'Sin confirmar'
+        REAGENDO = 'reagendo', 'Reagendó'
+        CANCELO = 'cancelo', 'Canceló'
+        SI_ASISTIO = 'si_asistio', 'Sí asistió'
+        NO_ASISTIO = 'no_asistio', 'No asistió'
+        INCIDENCIA = 'incidencia', 'Incidencia'
+
+    class MetodoPago(models.TextChoices):
+        TRANSFERENCIA = 'transferencia', 'Transferencia'
+        EFECTIVO = 'efectivo', 'Efectivo'
+        PASE = 'pase', 'Pase'
+        DEBITO = 'debito', 'Débito'
+        CREDITO = 'credito', 'Crédito'
+
+    fecha = models.DateField()
+    hora = models.TimeField()
+    tipo_cita = models.CharField(max_length=50, blank=True)
+    paciente = models.CharField(max_length=150)
+    terapeuta = models.CharField(max_length=150)
+    servicio = models.CharField(max_length=100, blank=True)
+    division = models.CharField('División', max_length=100, blank=True)
+    consultorio = models.CharField(max_length=100, blank=True)
+    estatus = models.CharField(max_length=20, choices=Estatus.choices)
+    metodo_pago = models.CharField(max_length=20, choices=MetodoPago.choices, blank=True)
+    costo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    ingreso = models.OneToOneField(
+        Ingreso, null=True, blank=True, on_delete=models.SET_NULL,
+        editable=False, related_name='cita_recepcion',
+    )
+
+    class Meta:
+        verbose_name = 'Cita de Recepción'
+        verbose_name_plural = 'Citas de Recepción'
+        ordering = ['-fecha', '-hora']
+        # Validación de duplicados pedida en la sección 5.1 del documento:
+        # una misma cita (fecha, hora, paciente, terapeuta, servicio) nunca
+        # se importa dos veces; una segunda importación actualiza la fila.
+        unique_together = ('fecha', 'hora', 'paciente', 'terapeuta', 'servicio')
+
+    def __str__(self):
+        return f'{self.paciente} · {self.terapeuta} · {self.fecha} {self.hora}'
+
+
 class Egreso(models.Model):
     class Categoria(models.TextChoices):
         RENTA = 'renta', 'Renta'

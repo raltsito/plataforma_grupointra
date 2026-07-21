@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Donativo, Egreso, Honorario, Ingreso, Tabulador
+from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, Tabulador
 
 
 @admin.register(Tabulador)
@@ -30,6 +30,14 @@ class HonorarioAdmin(admin.ModelAdmin):
     list_display = ('terapeuta', 'tabulador', 'periodo_mes', 'periodo_anio', 'num_pacientes', 'bono', 'total', 'estatus')
     list_filter = ('estatus', 'periodo_anio', 'periodo_mes')
     readonly_fields = ('bono', 'total')
+
+
+@admin.register(CitaRecepcion)
+class CitaRecepcionAdmin(admin.ModelAdmin):
+    list_display = ('fecha', 'hora', 'paciente', 'terapeuta', 'servicio', 'estatus', 'metodo_pago', 'costo', 'ingreso')
+    list_filter = ('estatus', 'metodo_pago', 'division', 'fecha')
+    search_fields = ('paciente', 'terapeuta')
+    readonly_fields = ('ingreso',)
 
 
 @admin.register(Donativo)

@@ -3,10 +3,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 from functools import wraps
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -14,10 +15,14 @@ from django.utils import timezone
 
 from apps.core.permisos.grupos import usuario_pertenece_a
 
-from .forms import DonativoForm, EgresoForm, IngresoForm
+from .forms import DonativoForm, EgresoForm, IngresoForm, ReporteRecepcionUploadForm
 from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
 from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
-from .models import Donativo, Egreso, Honorario, Ingreso
+from .integraciones.importador_recepcion import importar_citas
+from .integraciones.reporte_recepcion import ReporteRecepcionError, leer_reporte_api, leer_reporte_excel
+from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso
+from .pdfs import render_pdf
+from .reportes_nomina import resumen_nomina_semanal
 
 META_ANUAL_DONATIVOS = Decimal('2000000')
 
@@ -305,6 +310,121 @@ def nomina_view(request):
         'hay_seleccionables': any(not c['importado'] for c in cortes),
     }
     return render(request, 'finanzas/nomina.html', contexto)
+
+
+@acceso_finanzas_requerido
+def nomina_descargar_view(request):
+    """Genera el PDF descargable de la nómina semanal (sección 4 del
+    documento de requerimientos), a partir de los Egresos ya importados de
+    ConsultorioWeb en el rango de fechas seleccionado en la pantalla de
+    Nómina."""
+    hoy = timezone.now().date()
+    fecha_inicio = _fecha_desde_query(request, 'fecha_inicio') or (hoy - timedelta(weeks=4))
+    fecha_fin = _fecha_desde_query(request, 'fecha_fin') or hoy
+
+    filas, totales = resumen_nomina_semanal(fecha_inicio, fecha_fin)
+    estatus_general = Egreso.Estatus.PENDIENTE if any(
+        f['estatus'] == Egreso.Estatus.PENDIENTE for f in filas
+    ) else Egreso.Estatus.PAGADO
+
+    contexto = {
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin,
+        'filas': filas,
+        'totales': totales,
+        'estatus_general': estatus_general,
+        'generado_en': timezone.now(),
+    }
+    nombre_archivo = f'nomina_semanal_{fecha_inicio.isoformat()}_{fecha_fin.isoformat()}.pdf'
+    return render_pdf('finanzas/nomina_pdf.html', contexto, nombre_archivo)
+
+
+@acceso_finanzas_requerido
+def reporte_recepcion_view(request):
+    """Importa el Reporte General de Recepción y alimenta Ingresos, ranking
+    de terapeutas y comparativo por método de pago, sin copiar manualmente a
+    otra plantilla (sección 5 del documento de requerimientos). Fuente
+    principal: sincronización directa con GET /api/reporte-general/ de
+    ConsultorioWeb. El Excel exportado a mano se conserva como respaldo, por
+    si la API no responde o se necesita importar un periodo puntual."""
+    hoy = timezone.now().date()
+
+    if request.method == 'POST':
+        if request.POST.get('accion') == 'sincronizar':
+            fecha_inicio_str = request.POST.get('fecha_inicio', '')
+            fecha_fin_str = request.POST.get('fecha_fin', '')
+            try:
+                filas = leer_reporte_api(fecha_inicio_str, fecha_fin_str)
+                resumen = importar_citas(filas)
+                messages.success(
+                    request,
+                    f"Sincronizado con ConsultorioWeb: {resumen['creadas']} citas nuevas, "
+                    f"{resumen['actualizadas']} actualizadas "
+                    f"({resumen['con_ingreso']} generaron ingreso).",
+                )
+            except (ConsultorioWebError, ReporteRecepcionError) as exc:
+                messages.error(request, f'{exc} Puedes usar el respaldo de Excel mientras tanto.')
+            return redirect(f"{reverse('finanzas:reporte_recepcion')}?fecha_inicio={fecha_inicio_str}&fecha_fin={fecha_fin_str}")
+
+        form_upload = ReporteRecepcionUploadForm(request.POST, request.FILES)
+        if form_upload.is_valid():
+            try:
+                filas = leer_reporte_excel(form_upload.cleaned_data['archivo'])
+                resumen = importar_citas(filas)
+                messages.success(
+                    request,
+                    f"Reporte importado desde Excel: {resumen['creadas']} citas nuevas, "
+                    f"{resumen['actualizadas']} actualizadas "
+                    f"({resumen['con_ingreso']} generaron ingreso).",
+                )
+            except ReporteRecepcionError as exc:
+                messages.error(request, str(exc))
+        return redirect('finanzas:reporte_recepcion')
+
+    form_upload = ReporteRecepcionUploadForm()
+    fecha_inicio = request.GET.get('fecha_inicio') or str(hoy - timedelta(weeks=4))
+    fecha_fin = request.GET.get('fecha_fin') or str(hoy)
+
+    citas = CitaRecepcion.objects.all()
+    total_citas = citas.count()
+    total_asistidas = citas.filter(estatus=CitaRecepcion.Estatus.SI_ASISTIO).count()
+    total_ingresos_generados = _suma(Ingreso.objects.filter(cita_recepcion__isnull=False))
+
+    ranking = (
+        citas.filter(estatus=CitaRecepcion.Estatus.SI_ASISTIO)
+        .values('terapeuta')
+        .annotate(citas_atendidas=Count('id'), total_generado=Sum('costo'))
+        .order_by('-total_generado')[:10]
+    )
+    for fila in ranking:
+        fila['total_generado_fmt'] = _dinero(fila['total_generado'] or Decimal('0'))
+
+    por_metodo = (
+        citas.filter(estatus=CitaRecepcion.Estatus.SI_ASISTIO)
+        .exclude(metodo_pago='')
+        .values('metodo_pago')
+        .annotate(total=Sum('costo'), citas=Count('id'))
+        .order_by('-total')
+    )
+    metodos_display = dict(CitaRecepcion.MetodoPago.choices)
+    for fila in por_metodo:
+        fila['metodo_pago_display'] = metodos_display.get(fila['metodo_pago'], fila['metodo_pago'])
+        fila['total_fmt'] = _dinero(fila['total'] or Decimal('0'))
+
+    contexto = {
+        'vista_actual': 'reporte_recepcion',
+        'form_upload': form_upload,
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin,
+        'api_configurada': bool(settings.CONSULTORIOWEB_API_URL),
+        'total_citas': total_citas,
+        'total_asistidas': total_asistidas,
+        'total_ingresos_generados': _dinero(total_ingresos_generados),
+        'ranking': ranking,
+        'por_metodo': por_metodo,
+        'ultimas_citas': citas.select_related('ingreso')[:20],
+    }
+    return render(request, 'finanzas/reporte_recepcion.html', contexto)
 
 
 @acceso_finanzas_requerido

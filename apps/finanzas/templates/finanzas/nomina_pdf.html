@@ -1,0 +1,144 @@
+{% load finanzas_extras static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter landscape; margin: 1.6cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #1B2C4F; }
+  .encabezado { width: 100%; margin-bottom: 10px; }
+  .encabezado table { width: 100%; }
+  .encabezado img { height: 42px; }
+  .titulo { font-size: 15pt; font-weight: bold; color: #1B2C4F; }
+  .subtitulo { font-size: 9pt; color: #555; margin-top: 2px; }
+  .estatus-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 10px;
+    font-size: 8pt; font-weight: bold; color: #fff;
+  }
+  .estatus-pagado { background-color: #1F8A5B; }
+  .estatus-pendiente { background-color: #C9622B; }
+  table.fin-pdf-tabla { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.fin-pdf-tabla th {
+    background-color: #1B2C4F; color: #fff; text-align: left;
+    padding: 5px 6px; font-size: 8pt;
+  }
+  table.fin-pdf-tabla td {
+    padding: 5px 6px; border-bottom: 1px solid #E6EAF2; font-size: 8.5pt;
+  }
+  table.fin-pdf-tabla td.num { text-align: right; }
+  .fin-pdf-totales { width: 100%; margin-top: 14px; }
+  .fin-pdf-totales table { width: 100%; border-collapse: collapse; }
+  .fin-pdf-totales td {
+    background-color: #F3F5FA; padding: 8px; text-align: center;
+    border: 1px solid #E6EAF2;
+  }
+  .fin-pdf-totales .label { display: block; font-size: 7.5pt; color: #555; margin-bottom: 3px; }
+  .fin-pdf-totales .valor { display: block; font-size: 11pt; font-weight: bold; color: #1B2C4F; }
+  .fin-pdf-vales { margin-top: 14px; }
+  .fin-pdf-vales-titulo { font-weight: bold; margin-bottom: 4px; }
+  .fin-pdf-pie { margin-top: 16px; font-size: 8pt; color: #888; }
+</style>
+</head>
+<body>
+
+  <div class="encabezado">
+    <table>
+      <tr>
+        <td style="width: 60px;"><img src="{% static 'core/images/intra-logo.png' %}" alt="INTRA"></td>
+        <td>
+          <div class="titulo">Nómina semanal INTRA</div>
+          <div class="subtitulo">
+            Periodo: {{ fecha_inicio|date:'d/m/Y' }} al {{ fecha_fin|date:'d/m/Y' }}
+          </div>
+        </td>
+        <td style="text-align: right;">
+          <span class="estatus-badge {% if estatus_general == 'pendiente' %}estatus-pendiente{% else %}estatus-pagado{% endif %}">
+            {% if estatus_general == 'pendiente' %}Pendiente{% else %}Pagado{% endif %}
+          </span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <table class="fin-pdf-tabla">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Tipo</th>
+        <th>Concepto</th>
+        <th>Método</th>
+        <th>Estatus</th>
+        <th class="num">Pago base</th>
+        <th class="num">Vale gasolina</th>
+        <th class="num">Bono</th>
+        <th class="num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for fila in filas %}
+      <tr>
+        <td>{{ fila.persona }}</td>
+        <td>Terapeuta</td>
+        <td>Pago a terapeuta</td>
+        <td>{{ fila.metodo_pago_display|default:'Pendiente de asignar' }}</td>
+        <td>{% if fila.estatus == 'pendiente' %}Pendiente de pago{% else %}Pagado{% endif %}</td>
+        <td class="num">{{ fila.pago_base|dinero }}</td>
+        <td class="num">{{ fila.vale|dinero }}</td>
+        <td class="num">{{ fila.bono|dinero }}</td>
+        <td class="num">{{ fila.total|dinero }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9">No hay egresos de nómina de terapeutas importados en este periodo.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="fin-pdf-totales">
+    <table>
+      <tr>
+        <td>
+          <span class="label">Pendiente por dispersar</span>
+          <span class="valor">{{ totales.pendiente_dispersar|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Pendiente transferencia</span>
+          <span class="valor">{{ totales.pendiente_transferencia|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Pendiente efectivo</span>
+          <span class="valor">{{ totales.pendiente_efectivo|dinero }}</span>
+        </td>
+        <td>
+          <span class="label">Vales / extras pendientes</span>
+          <span class="valor">{{ totales.vales_pendientes|dinero }}</span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="fin-pdf-vales">
+    <div class="fin-pdf-vales-titulo">Detalle de vales de gasolina por persona</div>
+    <table class="fin-pdf-tabla">
+      <thead>
+        <tr><th>Persona</th><th class="num">Pendiente</th><th class="num">Entregado</th></tr>
+      </thead>
+      <tbody>
+        {% for fila in filas %}
+          {% if fila.vale_pendiente or fila.vale_entregado %}
+          <tr>
+            <td>{{ fila.persona }}</td>
+            <td class="num">{{ fila.vale_pendiente|dinero }}</td>
+            <td class="num">{{ fila.vale_entregado|dinero }}</td>
+          </tr>
+          {% endif %}
+        {% empty %}
+        <tr><td colspan="3">Sin vales de gasolina en este periodo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fin-pdf-pie">Generado el {{ generado_en|date:'d/m/Y H:i' }}</div>
+
+</body>
+</html>
