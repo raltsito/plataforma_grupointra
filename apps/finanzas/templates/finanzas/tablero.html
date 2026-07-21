@@ -166,6 +166,10 @@
           {{ form_ingreso.monto }}
         </div>
         <div class="fin-field">
+          <label for="{{ form_ingreso.monto_pagado.id_for_label }}">{{ form_ingreso.monto_pagado.label }}</label>
+          {{ form_ingreso.monto_pagado }}
+        </div>
+        <div class="fin-field">
           <label for="{{ form_ingreso.estatus.id_for_label }}">Estatus</label>
           {{ form_ingreso.estatus }}
         </div>

@@ -1,8 +1,9 @@
 from django.contrib import admin
 
 from .models import (
-    CitaRecepcion, ConceptoNominaAcademia, Donativo, Egreso, Honorario,
-    Ingreso, Maestro, NominaAcademia, Tabulador, TabuladorAcademia,
+    CategoriaEgreso, CitaRecepcion, ConceptoIngreso, ConceptoNominaAcademia,
+    Donativo, Egreso, Honorario, Ingreso, Maestro, NominaAcademia, Tabulador,
+    TabuladorAcademia,
 )
 
 
@@ -76,3 +77,15 @@ class NominaAcademiaAdmin(admin.ModelAdmin):
     list_filter = ('estatus', 'periodo_anio', 'periodo_mes')
     readonly_fields = ('total',)
     inlines = [ConceptoNominaAcademiaInline]
+
+
+@admin.register(ConceptoIngreso)
+class ConceptoIngresoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'activo')
+    list_filter = ('activo',)
+
+
+@admin.register(CategoriaEgreso)
+class CategoriaEgresoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'activo')
+    list_filter = ('activo',)

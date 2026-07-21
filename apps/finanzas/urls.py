@@ -13,6 +13,7 @@ urlpatterns = [
     path('nomina-academia/', views.nomina_academia_view, name='nomina_academia'),
     path('nomina-academia/<int:nomina_id>/descargar/', views.nomina_academia_descargar_view, name='nomina_academia_descargar'),
     path('ajustes/', views.ajustes_view, name='ajustes'),
+    path('configuracion/', views.configuracion_view, name='configuracion'),
     path('donativos/', views.donativos_view, name='donativos'),
     path('reportes/', views.reportes_view, name='reportes'),
     path('exportar/', views.exportar_view, name='exportar'),

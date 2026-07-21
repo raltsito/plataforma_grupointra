@@ -49,13 +49,22 @@ class Ingreso(models.Model):
         PARCIAL = 'parcial', 'Parcial'
         PENDIENTE = 'pendiente', 'Pendiente'
 
-    concepto = models.CharField(max_length=30, choices=Concepto.choices)
+    # max_length=50 (no 30): además de los conceptos fijos de arriba, el
+    # catálogo de Configuración (ConceptoIngreso) permite agregar conceptos
+    # con nombre libre, más largos que las claves fijas.
+    concepto = models.CharField(max_length=50, choices=Concepto.choices)
     terapeuta = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='ingresos',
     )
     persona = models.CharField('Alumno / Paciente', max_length=150, blank=True)
     monto = models.DecimalField(max_digits=10, decimal_places=2)
+    # Solo aplica cuando estatus=Parcial: cuánto se ha cobrado ya del monto
+    # total. El tablero y los reportes suman monto_pagado en vez de monto
+    # mientras esté Parcial, y no suman nada mientras esté Pendiente — un
+    # ingreso no cuenta como dinero real hasta que se cobra (ver
+    # views.py::_ingresos_efectivos).
+    monto_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0'))
     estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PENDIENTE)
     fecha = models.DateField()
 
@@ -140,7 +149,9 @@ class Egreso(models.Model):
         PENDIENTE = 'pendiente', 'Pendiente'
 
     concepto = models.CharField(max_length=150)
-    categoria = models.CharField(max_length=20, choices=Categoria.choices)
+    # max_length=50 (no 20): el catálogo de Configuración (CategoriaEgreso)
+    # permite agregar categorías con nombre libre, además de las fijas.
+    categoria = models.CharField(max_length=50, choices=Categoria.choices)
     persona = models.CharField('Terapeuta / Proveedor', max_length=150, blank=True)
     monto = models.DecimalField(max_digits=10, decimal_places=2)
     metodo_pago = models.CharField(max_length=20, choices=MetodoPago.choices, blank=True)
@@ -376,3 +387,41 @@ class Ajuste(models.Model):
 
     def __str__(self):
         return f'Ajuste {self.diferencia} · {self.registro} · {self.motivo}'
+
+
+class ConceptoIngreso(models.Model):
+    """Conceptos adicionales de Ingreso, administrables desde Configuración
+    sin necesidad de modificar código ni volver a desplegar. Los conceptos
+    base (Consulta, Inscripción diplomado, etc.) siguen viviendo en
+    Ingreso.Concepto porque el tablero los usa para colorear la gráfica de
+    dona; esto solo agrega opciones extra al selector de Ingreso.concepto."""
+
+    nombre = models.CharField(max_length=50, unique=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Concepto de Ingreso (adicional)'
+        verbose_name_plural = 'Conceptos de Ingreso (adicionales)'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
+class CategoriaEgreso(models.Model):
+    """Categorías adicionales de Egreso, administrables desde Configuración.
+    Las categorías base (Renta, Nómina, Insumos, etc.) siguen en
+    Egreso.Categoria porque Reportes agrupa el estado de resultados por
+    ellas; un Egreso con una categoría adicional se agrupa en "Otros
+    egresos" dentro de Reportes, para que el total siempre cuadre."""
+
+    nombre = models.CharField(max_length=50, unique=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Categoría de Egreso (adicional)'
+        verbose_name_plural = 'Categorías de Egreso (adicionales)'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre

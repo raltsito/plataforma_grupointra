@@ -18,14 +18,18 @@ from apps.core.permisos.grupos import usuario_pertenece_a
 from .ajustes import AjusteError, registrar_ajuste
 from .duplicados import DuplicadoError
 from .forms import (
-    AjusteForm, DonativoForm, EgresoForm, HonorarioForm, IngresoForm, MaestroForm,
-    NominaAcademiaCaptureForm, ReporteRecepcionUploadForm, TabuladorAcademiaForm, TabuladorForm,
+    AjusteForm, CategoriaEgresoForm, ConceptoIngresoForm, DonativoForm, EgresoForm,
+    HonorarioForm, IngresoForm, MaestroForm, NominaAcademiaCaptureForm,
+    ReporteRecepcionUploadForm, TabuladorAcademiaForm, TabuladorForm,
 )
 from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
 from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
 from .integraciones.importador_recepcion import importar_citas
 from .integraciones.reporte_recepcion import ReporteRecepcionError, leer_reporte_api, leer_reporte_excel
-from .models import Ajuste, CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, NominaAcademia
+from .models import (
+    Ajuste, CategoriaEgreso, CitaRecepcion, ConceptoIngreso, Donativo, Egreso,
+    Honorario, Ingreso, NominaAcademia,
+)
 from .nomina_academia import capturar_nomina_academia
 from .pdfs import render_pdf
 from .reportes_nomina import resumen_nomina_semanal
@@ -59,6 +63,41 @@ def acceso_finanzas_requerido(vista):
 
 def _suma(queryset, campo='monto'):
     return queryset.aggregate(total=Sum(campo))['total'] or Decimal('0')
+
+
+def _ingresos_efectivos(queryset):
+    """Ingresos que ya son dinero real: el monto completo si está Pagado,
+    solo lo cobrado (monto_pagado) si está Parcial. Un ingreso Pendiente no
+    cuenta todavía — así lo pidió Administración al revisar el tablero."""
+    pagado = _suma(queryset.filter(estatus=Ingreso.Estatus.PAGADO))
+    parcial = _suma(queryset.filter(estatus=Ingreso.Estatus.PARCIAL), 'monto_pagado')
+    return pagado + parcial
+
+
+def _egresos_efectivos(queryset):
+    """Egresos ya pagados; uno Pendiente no cuenta hasta que se pague."""
+    return _suma(queryset.filter(estatus=Egreso.Estatus.PAGADO))
+
+
+def _honorarios_efectivos(queryset):
+    """Honorarios ya pagados; uno Pendiente no cuenta hasta que se pague."""
+    return _suma(queryset.filter(estatus=Honorario.Estatus.PAGADO), 'total')
+
+
+def _donativos_efectivos(queryset):
+    """Donativos vigentes o en trámite; uno Cancelado no debe sumar."""
+    return _suma(queryset.exclude(estatus_cfdi=Donativo.EstatusCFDI.CANCELADO))
+
+
+def _ingresos_por_concepto_efectivo(queryset):
+    """Ingresos efectivos (ver _ingresos_efectivos) agrupados por concepto,
+    para la gráfica de dona del tablero."""
+    totales = {}
+    for fila in queryset.filter(estatus=Ingreso.Estatus.PAGADO).values('concepto').annotate(total=Sum('monto')):
+        totales[fila['concepto']] = totales.get(fila['concepto'], Decimal('0')) + (fila['total'] or Decimal('0'))
+    for fila in queryset.filter(estatus=Ingreso.Estatus.PARCIAL).values('concepto').annotate(total=Sum('monto_pagado')):
+        totales[fila['concepto']] = totales.get(fila['concepto'], Decimal('0')) + (fila['total'] or Decimal('0'))
+    return totales
 
 
 def _dinero(valor):
@@ -95,15 +134,18 @@ def tablero_view(request):
     honorarios_mes = Honorario.objects.filter(periodo_anio=hoy.year, periodo_mes=hoy.month)
     donativos_mes = Donativo.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month)
 
-    ingresos_mes_ant = _suma(Ingreso.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
-    egresos_mes_ant = _suma(Egreso.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
-    honorarios_mes_ant = _suma(Honorario.objects.filter(periodo_anio=anio_ant, periodo_mes=mes_ant), 'total')
-    donativos_mes_ant = _suma(Donativo.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
+    ingresos_mes_ant = _ingresos_efectivos(Ingreso.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
+    egresos_mes_ant = _egresos_efectivos(Egreso.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
+    honorarios_mes_ant = _honorarios_efectivos(Honorario.objects.filter(periodo_anio=anio_ant, periodo_mes=mes_ant))
+    donativos_mes_ant = _donativos_efectivos(Donativo.objects.filter(fecha__year=anio_ant, fecha__month=mes_ant))
 
-    total_ingresos = _suma(ingresos_mes)
-    total_egresos = _suma(egresos_mes)
-    total_honorarios = _suma(honorarios_mes, 'total')
-    total_donativos = _suma(donativos_mes)
+    # Solo cuenta dinero real: un Ingreso/Egreso/Honorario Pendiente no suma
+    # al tablero hasta que se marca Pagado (o, en Ingreso, lo que ya se
+    # cobró si está Parcial). Un Donativo Cancelado tampoco suma.
+    total_ingresos = _ingresos_efectivos(ingresos_mes)
+    total_egresos = _egresos_efectivos(egresos_mes)
+    total_honorarios = _honorarios_efectivos(honorarios_mes)
+    total_donativos = _donativos_efectivos(donativos_mes)
     balance_neto = total_ingresos - total_egresos - total_honorarios
     balance_neto_ant = ingresos_mes_ant - egresos_mes_ant - honorarios_mes_ant
 
@@ -127,23 +169,29 @@ def tablero_view(request):
 
     barras = []
     for anio, mes in _meses_recientes(6):
-        ing = _suma(Ingreso.objects.filter(fecha__year=anio, fecha__month=mes))
-        egr = _suma(Egreso.objects.filter(fecha__year=anio, fecha__month=mes))
+        ing = _ingresos_efectivos(Ingreso.objects.filter(fecha__year=anio, fecha__month=mes))
+        egr = _egresos_efectivos(Egreso.objects.filter(fecha__year=anio, fecha__month=mes))
         barras.append({'mes': MESES_ABREV[mes], 'ingreso': ing, 'egreso': egr})
     max_barra = max([b['ingreso'] for b in barras] + [b['egreso'] for b in barras] + [Decimal('1')])
     for b in barras:
         b['ingreso_pct'] = float(b['ingreso'] / max_barra * 100)
         b['egreso_pct'] = float(b['egreso'] / max_barra * 100)
 
-    por_concepto = ingresos_mes.values('concepto').annotate(total=Sum('monto')).order_by('-total')
     concepto_legend = []
     conic_parts = []
     acumulado_pct = 0.0
-    for fila in por_concepto:
-        pct = float(fila['total'] / total_ingresos * 100) if total_ingresos else 0
-        color = COLOR_POR_CONCEPTO.get(fila['concepto'], '#8FA0C0')
+    conceptos_display = dict(Ingreso.Concepto.choices)
+    totales_por_concepto = _ingresos_por_concepto_efectivo(ingresos_mes)
+    for concepto, total in sorted(totales_por_concepto.items(), key=lambda kv: -kv[1]):
+        if not total:
+            continue
+        pct = float(total / total_ingresos * 100) if total_ingresos else 0
+        color = COLOR_POR_CONCEPTO.get(concepto, '#8FA0C0')
         concepto_legend.append({
-            'label': dict(Ingreso.Concepto.choices)[fila['concepto']],
+            # .get() con default: un concepto agregado desde Configuración no
+            # está en el enum fijo, así que se muestra tal cual (ya es un
+            # nombre legible, ver ConceptoIngreso).
+            'label': conceptos_display.get(concepto, concepto),
             'pct': round(pct),
             'color': color,
         })
@@ -163,7 +211,7 @@ def tablero_view(request):
             'concepto': e.concepto, 'meta': e.get_categoria_display(),
             'monto': _dinero(e.monto), 'signo': '-', 'fecha': e.fecha,
         })
-    for d in donativos_mes.order_by('-fecha')[:5]:
+    for d in donativos_mes.exclude(estatus_cfdi=Donativo.EstatusCFDI.CANCELADO).order_by('-fecha')[:5]:
         recientes.append({
             'concepto': f'Donativo {d.get_tipo_display().lower()}', 'meta': d.donante_nombre,
             'monto': _dinero(d.monto), 'signo': '+', 'fecha': d.fecha,
@@ -171,7 +219,7 @@ def tablero_view(request):
     recientes.sort(key=lambda r: r['fecha'], reverse=True)
     recientes = recientes[:5]
 
-    total_donativos_anio = _suma(Donativo.objects.filter(fecha__year=hoy.year))
+    total_donativos_anio = _donativos_efectivos(Donativo.objects.filter(fecha__year=hoy.year))
     pct_meta = min(100, round(float(total_donativos_anio / META_ANUAL_DONATIVOS * 100)))
     meta_donativos = {
         'acumulado': _dinero(total_donativos_anio),
@@ -222,10 +270,16 @@ def ingresos_view(request):
         form_ingreso = IngresoForm(initial={'fecha': hoy})
 
     ingresos_mes = Ingreso.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month)
+    # Se diferencia el total capturado (lo que se debe cobrar en total) de
+    # lo efectivamente cobrado (Pagado completo + la parte ya cobrada de un
+    # Parcial) y lo que todavía falta por cobrar — antes "Cobrado" solo veía
+    # los Pagado completos e ignoraba lo ya cobrado de un Parcial.
+    total_capturado = _suma(ingresos_mes)
+    cobrado = _ingresos_efectivos(ingresos_mes)
     stats = [
-        {'label': 'Total ingresos del mes', 'value': _dinero(_suma(ingresos_mes)), 'color': '#1F8A5B'},
-        {'label': 'Cobrado', 'value': _dinero(_suma(ingresos_mes.filter(estatus=Ingreso.Estatus.PAGADO))), 'color': '#1B2C4F'},
-        {'label': 'Pendiente / parcial', 'value': _dinero(_suma(ingresos_mes.exclude(estatus=Ingreso.Estatus.PAGADO))), 'color': '#9A6B12'},
+        {'label': 'Total capturado', 'value': _dinero(total_capturado), 'color': '#1B2C4F'},
+        {'label': 'Cobrado', 'value': _dinero(cobrado), 'color': '#1F8A5B'},
+        {'label': 'Pendiente por cobrar', 'value': _dinero(total_capturado - cobrado), 'color': '#9A6B12'},
     ]
     contexto = {
         'vista_actual': 'ingresos',
@@ -467,14 +521,16 @@ def donativos_view(request):
     donativos_mes = Donativo.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month)
     donativos_anio = Donativo.objects.filter(fecha__year=hoy.year)
     stats = [
-        {'label': 'Donativos del mes', 'value': _dinero(_suma(donativos_mes)), 'sub': f'{donativos_mes.count()} donantes'},
-        {'label': f'Acumulado {hoy.year}', 'value': _dinero(_suma(donativos_anio)), 'sub': f'meta {_dinero(META_ANUAL_DONATIVOS)}'},
+        # Un CFDI Cancelado nunca fue dinero real: no suma en ninguna de
+        # estas tarjetas (mismo criterio que el tablero).
+        {'label': 'Donativos del mes', 'value': _dinero(_donativos_efectivos(donativos_mes)), 'sub': f'{donativos_mes.count()} donantes'},
+        {'label': f'Acumulado {hoy.year}', 'value': _dinero(_donativos_efectivos(donativos_anio)), 'sub': f'meta {_dinero(META_ANUAL_DONATIVOS)}'},
         {
             'label': 'CFDI emitidos',
             'value': str(donativos_anio.exclude(folio_cfdi='').exclude(folio_cfdi__isnull=True).count()),
             'sub': f"{donativos_anio.filter(estatus_cfdi=Donativo.EstatusCFDI.VIGENTE).count()} vigentes",
         },
-        {'label': 'En especie', 'value': _dinero(_suma(donativos_anio.filter(tipo=Donativo.Tipo.ESPECIE))), 'sub': 'valuación fiscal'},
+        {'label': 'En especie', 'value': _dinero(_donativos_efectivos(donativos_anio.filter(tipo=Donativo.Tipo.ESPECIE))), 'sub': 'valuación fiscal'},
     ]
     contexto = {
         'vista_actual': 'donativos',
@@ -605,6 +661,41 @@ def ajustes_view(request):
 
 
 @acceso_finanzas_requerido
+def configuracion_view(request):
+    """Catálogos administrables sin tocar código: conceptos adicionales de
+    Ingreso y categorías adicionales de Egreso. Las opciones base siguen
+    fijas en el código porque otras pantallas (tablero, reportes) las usan
+    por nombre; esto solo agrega opciones extra a los selectores."""
+    form_concepto = ConceptoIngresoForm()
+    form_categoria = CategoriaEgresoForm()
+
+    if request.method == 'POST':
+        if request.POST.get('accion') == 'categoria_egreso':
+            form_categoria = CategoriaEgresoForm(request.POST)
+            if form_categoria.is_valid():
+                form_categoria.save()
+                messages.success(request, 'Categoría de Egreso agregada correctamente.')
+                return redirect('finanzas:configuracion')
+        else:
+            form_concepto = ConceptoIngresoForm(request.POST)
+            if form_concepto.is_valid():
+                form_concepto.save()
+                messages.success(request, 'Concepto de Ingreso agregado correctamente.')
+                return redirect('finanzas:configuracion')
+
+    contexto = {
+        'vista_actual': 'configuracion',
+        'form_concepto': form_concepto,
+        'form_categoria': form_categoria,
+        'conceptos_base': [c[1] for c in Ingreso.Concepto.choices],
+        'categorias_base': [c[1] for c in Egreso.Categoria.choices],
+        'conceptos_extra': ConceptoIngreso.objects.order_by('nombre'),
+        'categorias_extra': CategoriaEgreso.objects.order_by('nombre'),
+    }
+    return render(request, 'finanzas/configuracion.html', contexto)
+
+
+@acceso_finanzas_requerido
 def reportes_view(request):
     hoy = timezone.now().date()
     ingresos_anio = Ingreso.objects.filter(fecha__year=hoy.year)
@@ -612,19 +703,31 @@ def reportes_view(request):
     honorarios_anio = Honorario.objects.filter(periodo_anio=hoy.year)
     egresos_anio = Egreso.objects.filter(fecha__year=hoy.year)
 
-    total_ingresos_servicios = _suma(ingresos_anio)
-    total_donativos = _suma(donativos_anio)
+    # Solo dinero real: Pendientes no suman hasta que se paguen, Cancelados
+    # no suman nunca (mismo criterio que el tablero, ver _ingresos_efectivos).
+    total_ingresos_servicios = _ingresos_efectivos(ingresos_anio)
+    total_donativos = _donativos_efectivos(donativos_anio)
     total_ingresos = total_ingresos_servicios + total_donativos
 
-    total_honorarios = _suma(honorarios_anio, 'total')
+    total_honorarios = _honorarios_efectivos(honorarios_anio)
     total_renta = (
-        _suma(egresos_anio.filter(categoria=Egreso.Categoria.RENTA))
-        + _suma(egresos_anio.filter(categoria=Egreso.Categoria.SERVICIOS))
+        _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.RENTA))
+        + _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.SERVICIOS))
     )
-    total_nomina = _suma(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_ADMIN))
-    total_nomina_terapeutas = _suma(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_TERAPEUTAS))
-    total_insumos = _suma(egresos_anio.filter(categoria=Egreso.Categoria.INSUMOS))
-    total_egresos = total_honorarios + total_renta + total_nomina + total_nomina_terapeutas + total_insumos
+    total_nomina = _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_ADMIN))
+    total_nomina_terapeutas = _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_TERAPEUTAS))
+    total_nomina_academia = _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.NOMINA_ACADEMIA))
+    total_insumos = _egresos_efectivos(egresos_anio.filter(categoria=Egreso.Categoria.INSUMOS))
+    # "Otros egresos": cualquier categoría agregada desde Configuración que
+    # no sea una de las categorías fijas de arriba. Así el total siempre
+    # cuadra con la suma real, sin importar cuántas categorías nuevas agregue
+    # el usuario despues.
+    categorias_fijas = [c[0] for c in Egreso.Categoria.choices]
+    total_otros = _egresos_efectivos(egresos_anio.exclude(categoria__in=categorias_fijas))
+    total_egresos = (
+        total_honorarios + total_renta + total_nomina + total_nomina_terapeutas
+        + total_nomina_academia + total_insumos + total_otros
+    )
 
     resultado_ejercicio = total_ingresos - total_egresos
 
@@ -637,8 +740,10 @@ def reportes_view(request):
         'total_honorarios': _dinero(-total_honorarios),
         'total_nomina': _dinero(-total_nomina),
         'total_nomina_terapeutas': _dinero(-total_nomina_terapeutas),
+        'total_nomina_academia': _dinero(-total_nomina_academia),
         'total_renta': _dinero(-total_renta),
         'total_insumos': _dinero(-total_insumos),
+        'total_otros': _dinero(-total_otros),
         'total_egresos': _dinero(-total_egresos),
         'resultado_ejercicio': _dinero(resultado_ejercicio),
         'resultado_negativo': resultado_ejercicio < 0,

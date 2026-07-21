@@ -1,0 +1,125 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Configuración{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-categoria-egreso').showModal()">Agregar categoría de Egreso</button>
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-concepto-ingreso').showModal()">Agregar concepto de Ingreso</button>
+{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-banner">
+    <span class="fin-banner-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle></svg>
+    </span>
+    <div class="fin-banner-text"><b>Agrega opciones nuevas sin depender de un despliegue.</b> Los conceptos y categorías base (Consulta, Nómina, Insumos, etc.) siguen fijos porque el tablero y los reportes los usan para agrupar; lo que agregues aquí se suma como opción adicional en los formularios de Ingresos y Egresos.</div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Conceptos de Ingreso</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead><tr><th>Nombre</th><th>Origen</th><th>Estatus</th></tr></thead>
+        <tbody>
+          {% for nombre in conceptos_base %}
+          <tr><td>{{ nombre }}</td><td>Base (fijo en el sistema)</td><td>—</td></tr>
+          {% endfor %}
+          {% for c in conceptos_extra %}
+          <tr>
+            <td>{{ c.nombre }}</td>
+            <td>Agregado en Configuración</td>
+            <td><span class="fin-badge fin-badge-{% if c.activo %}vigente{% else %}cancelado{% endif %}">{% if c.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Categorías de Egreso</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead><tr><th>Nombre</th><th>Origen</th><th>Estatus</th></tr></thead>
+        <tbody>
+          {% for nombre in categorias_base %}
+          <tr><td>{{ nombre }}</td><td>Base (fijo en el sistema)</td><td>—</td></tr>
+          {% endfor %}
+          {% for c in categorias_extra %}
+          <tr>
+            <td>{{ c.nombre }}</td>
+            <td>Agregado en Configuración · se reporta en "Otros egresos"</td>
+            <td><span class="fin-badge fin-badge-{% if c.activo %}vigente{% else %}cancelado{% endif %}">{% if c.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<dialog id="dialog-concepto-ingreso" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="concepto_ingreso">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Agregar concepto de Ingreso</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_concepto.nombre.id_for_label }}">Nombre</label>
+        {{ form_concepto.nombre }}
+        {% if form_concepto.nombre.errors %}<span class="fin-field-error">{{ form_concepto.nombre.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_concepto.activo.id_for_label }}">Activo</label>
+        {{ form_concepto.activo }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_concepto.errors %}
+<script>document.getElementById('dialog-concepto-ingreso').showModal();</script>
+{% endif %}
+
+<dialog id="dialog-categoria-egreso" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="categoria_egreso">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Agregar categoría de Egreso</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_categoria.nombre.id_for_label }}">Nombre</label>
+        {{ form_categoria.nombre }}
+        {% if form_categoria.nombre.errors %}<span class="fin-field-error">{{ form_categoria.nombre.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_categoria.activo.id_for_label }}">Activo</label>
+        {{ form_categoria.activo }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_categoria.errors %}
+<script>document.getElementById('dialog-categoria-egreso').showModal();</script>
+{% endif %}
+{% endblock %}

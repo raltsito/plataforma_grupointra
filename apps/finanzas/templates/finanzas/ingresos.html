@@ -28,6 +28,7 @@
           <th>Alumno / Paciente</th>
           <th>Terapeuta</th>
           <th class="num">Monto</th>
+          <th class="num">Cobrado</th>
           <th>Estatus</th>
           <th>Fecha</th>
         </tr>
@@ -39,11 +40,16 @@
           <td>{{ row.persona|default:"—" }}</td>
           <td>{% if row.terapeuta %}{{ row.terapeuta.get_full_name|default:row.terapeuta.username }}{% else %}—{% endif %}</td>
           <td class="num">{{ row.monto|dinero }}</td>
+          <td class="num">
+            {% if row.estatus == 'pagado' %}{{ row.monto|dinero }}
+            {% elif row.estatus == 'parcial' %}{{ row.monto_pagado|dinero }}
+            {% else %}—{% endif %}
+          </td>
           <td><span class="fin-badge fin-badge-{{ row.estatus }}">{{ row.get_estatus_display }}</span></td>
           <td>{{ row.fecha|date:"d M" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="fin-empty">Todavía no hay ingresos registrados este mes.</td></tr>
+        <tr><td colspan="7" class="fin-empty">Todavía no hay ingresos registrados este mes.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -80,6 +86,11 @@
         <label for="{{ form_ingreso.monto.id_for_label }}">Monto</label>
         {{ form_ingreso.monto }}
         {% if form_ingreso.monto.errors %}<span class="fin-field-error">{{ form_ingreso.monto.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_ingreso.monto_pagado.id_for_label }}">{{ form_ingreso.monto_pagado.label }}</label>
+        {{ form_ingreso.monto_pagado }}
+        {% if form_ingreso.monto_pagado.errors %}<span class="fin-field-error">{{ form_ingreso.monto_pagado.errors.0 }}</span>{% endif %}
       </div>
       <div class="fin-field">
         <label for="{{ form_ingreso.estatus.id_for_label }}">Estatus</label>

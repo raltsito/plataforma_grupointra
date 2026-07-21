@@ -5,8 +5,8 @@ from django.contrib.auth import get_user_model
 
 from .duplicados import existe_duplicado
 from .models import (
-    ConceptoNominaAcademia, Donativo, Egreso, Honorario, Ingreso, Maestro,
-    NominaAcademia, Tabulador, TabuladorAcademia,
+    CategoriaEgreso, ConceptoIngreso, ConceptoNominaAcademia, Donativo, Egreso,
+    Honorario, Ingreso, Maestro, NominaAcademia, Tabulador, TabuladorAcademia,
 )
 
 User = get_user_model()
@@ -14,31 +14,57 @@ User = get_user_model()
 _ATTRS = {'class': 'fin-input'}
 
 
+def _opciones_concepto_ingreso():
+    """Conceptos fijos de Ingreso + los agregados desde Configuración."""
+    return list(Ingreso.Concepto.choices) + [
+        (c.nombre, c.nombre) for c in ConceptoIngreso.objects.filter(activo=True)
+    ]
+
+
+def _opciones_categoria_egreso():
+    """Categorías fijas de Egreso + las agregadas desde Configuración."""
+    return list(Egreso.Categoria.choices) + [
+        (c.nombre, c.nombre) for c in CategoriaEgreso.objects.filter(activo=True)
+    ]
+
+
 class IngresoForm(forms.ModelForm):
     class Meta:
         model = Ingreso
-        fields = ['concepto', 'terapeuta', 'persona', 'monto', 'estatus', 'fecha']
+        fields = ['concepto', 'terapeuta', 'persona', 'monto', 'monto_pagado', 'estatus', 'fecha']
         widgets = {
             'concepto': forms.Select(attrs=_ATTRS),
             'terapeuta': forms.Select(attrs=_ATTRS),
             'persona': forms.TextInput(attrs={**_ATTRS, 'placeholder': 'Nombre del alumno o paciente'}),
             'monto': forms.NumberInput(attrs={**_ATTRS, 'step': '0.01', 'min': '0.01'}),
+            'monto_pagado': forms.NumberInput(attrs={**_ATTRS, 'step': '0.01', 'min': '0'}),
             'estatus': forms.Select(attrs=_ATTRS),
             'fecha': forms.DateInput(attrs={**_ATTRS, 'type': 'date'}),
         }
+        labels = {'monto_pagado': 'Cuánto se ha cobrado ya (solo si es Parcial)'}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['concepto'].choices = _opciones_concepto_ingreso()
         self.fields['terapeuta'].queryset = User.objects.filter(
             groups__name='Terapeutas'
         ).order_by('first_name', 'username')
         self.fields['terapeuta'].required = False
+        self.fields['monto_pagado'].required = False
 
     def clean_monto(self):
         monto = self.cleaned_data['monto']
         if monto <= Decimal('0'):
             raise forms.ValidationError('El monto debe ser mayor a cero.')
         return monto
+
+    def clean(self):
+        datos = super().clean()
+        monto, monto_pagado = datos.get('monto'), datos.get('monto_pagado') or Decimal('0')
+        if monto is not None and monto_pagado > monto:
+            raise forms.ValidationError('Lo cobrado no puede ser mayor que el monto total.')
+        datos['monto_pagado'] = monto_pagado
+        return datos
 
 
 class TabuladorForm(forms.ModelForm):
@@ -243,6 +269,20 @@ class AjusteForm(forms.Form):
         return None, None
 
 
+class ConceptoIngresoForm(forms.ModelForm):
+    class Meta:
+        model = ConceptoIngreso
+        fields = ['nombre', 'activo']
+        widgets = {'nombre': forms.TextInput(attrs={**_ATTRS, 'placeholder': 'Nombre del concepto'})}
+
+
+class CategoriaEgresoForm(forms.ModelForm):
+    class Meta:
+        model = CategoriaEgreso
+        fields = ['nombre', 'activo']
+        widgets = {'nombre': forms.TextInput(attrs={**_ATTRS, 'placeholder': 'Nombre de la categoría'})}
+
+
 class EgresoForm(forms.ModelForm):
     class Meta:
         model = Egreso
@@ -256,6 +296,10 @@ class EgresoForm(forms.ModelForm):
             'estatus': forms.Select(attrs=_ATTRS),
             'fecha': forms.DateInput(attrs={**_ATTRS, 'type': 'date'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['categoria'].choices = _opciones_categoria_egreso()
 
     def clean_monto(self):
         monto = self.cleaned_data['monto']
