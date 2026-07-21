@@ -2,6 +2,8 @@ from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -345,3 +347,32 @@ class ConceptoNominaAcademia(models.Model):
         if self._state.adding:
             self.subtotal = self.cantidad * self.tarifa
         super().save(*args, **kwargs)
+
+
+class Ajuste(models.Model):
+    """Corrección posterior a un Honorario, NominaAcademia o Egreso ya
+    sellado/pagado. No modifica el registro original (esos montos quedan
+    congelados a propósito): registra motivo + diferencia, y esa diferencia
+    se refleja como un Egreso nuevo, separado — así el historial original
+    nunca se reescribe (criterio 10 del documento de requerimientos)."""
+
+    TIPOS_PERMITIDOS = models.Q(app_label='finanzas', model__in=('honorario', 'nominaacademia', 'egreso'))
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, limit_choices_to=TIPOS_PERMITIDOS)
+    object_id = models.PositiveIntegerField()
+    registro = GenericForeignKey('content_type', 'object_id')
+    motivo = models.CharField(max_length=255)
+    diferencia = models.DecimalField(max_digits=10, decimal_places=2)
+    egreso_generado = models.OneToOneField(
+        Egreso, null=True, blank=True, on_delete=models.SET_NULL,
+        editable=False, related_name='ajuste_origen',
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Ajuste'
+        verbose_name_plural = 'Ajustes'
+        ordering = ['-creado_en']
+
+    def __str__(self):
+        return f'Ajuste {self.diferencia} · {self.registro} · {self.motivo}'

@@ -3,6 +3,8 @@
 
 {% block titulo %}Nómina Academia{% endblock %}
 {% block acciones_header %}
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-maestro').showModal()">Agregar maestro</button>
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-tabulador-academia').showModal()">Registrar tabulador</button>
 <button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-nomina-academia').showModal()">Capturar nómina</button>
 {% endblock %}
 
@@ -58,9 +60,71 @@
 
 </div>
 
+<dialog id="dialog-maestro" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="maestro">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Agregar maestro</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_maestro.nombre.id_for_label }}">Nombre</label>
+        {{ form_maestro.nombre }}
+        {% if form_maestro.nombre.errors %}<span class="fin-field-error">{{ form_maestro.nombre.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_maestro.activo.id_for_label }}">Activo</label>
+        {{ form_maestro.activo }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_maestro.errors %}
+<script>document.getElementById('dialog-maestro').showModal();</script>
+{% endif %}
+
+<dialog id="dialog-tabulador-academia" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="tabulador_academia">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar tabulador de Academia</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_tabulador_academia.concepto.id_for_label }}">Concepto</label>
+        {{ form_tabulador_academia.concepto }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador_academia.monto_unidad.id_for_label }}">Monto por unidad</label>
+        {{ form_tabulador_academia.monto_unidad }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador_academia.vigente_desde.id_for_label }}">Vigente desde</label>
+        {{ form_tabulador_academia.vigente_desde }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_tabulador_academia.errors %}
+<script>document.getElementById('dialog-tabulador-academia').showModal();</script>
+{% endif %}
+
 <dialog id="dialog-nomina-academia" class="fin-modal">
   <form method="post" class="fin-modal-form">
     {% csrf_token %}
+    <input type="hidden" name="accion" value="nomina">
     <div class="fin-modal-header">
       <div class="fin-card-title">Capturar nómina Academia</div>
       <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>

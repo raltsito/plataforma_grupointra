@@ -3,11 +3,8 @@ from decimal import Decimal
 
 from django.db import transaction
 
+from .duplicados import DuplicadoError, existe_duplicado
 from .models import ConceptoNominaAcademia, Egreso, NominaAcademia
-
-
-class NominaAcademiaError(Exception):
-    """La nómina de Academia no se pudo capturar (ej. ya existe para ese periodo)."""
 
 
 @transaction.atomic
@@ -21,12 +18,10 @@ def capturar_nomina_academia(
     por cada concepto con monto > 0 (mismo patrón que la nómina semanal de
     terapeutas, ver integraciones/importador_nomina.py). `cantidades` es un
     dict {concepto: Decimal}. Bloquea duplicar nómina para el mismo
-    maestro/periodo (sección 6.1 del documento) — un ajuste posterior queda
-    para la Fase 4."""
-    if NominaAcademia.objects.filter(
-        maestro=maestro, periodo_mes=periodo_mes, periodo_anio=periodo_anio,
-    ).exists():
-        raise NominaAcademiaError(
+    maestro/periodo (sección 6.1 del documento); una corrección posterior se
+    registra como Ajuste (ver ajustes.py), sin reescribir esta nómina."""
+    if existe_duplicado(NominaAcademia, maestro=maestro, periodo_mes=periodo_mes, periodo_anio=periodo_anio):
+        raise DuplicadoError(
             f'Ya existe una nómina de Academia para {maestro} en {periodo_mes}/{periodo_anio}.'
         )
 

@@ -1,0 +1,96 @@
+{% extends 'finanzas/_base.html' %}
+{% load finanzas_extras %}
+
+{% block titulo %}Ajustes{% endblock %}
+{% block acciones_header %}
+<button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-ajuste').showModal()">Registrar ajuste</button>
+{% endblock %}
+
+{% block contenido %}
+<div class="fin-stack">
+
+  <div class="fin-banner">
+    <span class="fin-banner-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+    </span>
+    <div class="fin-banner-text"><b>Los ajustes no reescriben el historial.</b> Corrigen un Honorario, Nómina Academia o Egreso ya capturado registrando el motivo y la diferencia; si es un monto adicional a favor, se genera un Egreso nuevo, separado del original.</div>
+  </div>
+
+  <div class="fin-card fin-table-card">
+    <div class="fin-table-toolbar">
+      <div class="fin-card-title">Ajustes registrados</div>
+    </div>
+    <div class="fin-table-wrap">
+      <table class="fin-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Registro corregido</th>
+            <th>Motivo</th>
+            <th class="num">Diferencia</th>
+            <th>Egreso generado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in ajustes %}
+          <tr>
+            <td>{{ a.creado_en|date:'d/m/Y H:i' }}</td>
+            <td>{{ a.content_type.name|capfirst }} · {{ a.registro }}</td>
+            <td>{{ a.motivo }}</td>
+            <td class="num">{{ a.diferencia|dinero }}</td>
+            <td>{% if a.egreso_generado %}{{ a.egreso_generado.monto|dinero }}{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="fin-empty">Todavía no hay ajustes registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<dialog id="dialog-ajuste" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar ajuste</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form.honorario.id_for_label }}">{{ form.honorario.label }}</label>
+        {{ form.honorario }}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form.nomina_academia.id_for_label }}">{{ form.nomina_academia.label }}</label>
+        {{ form.nomina_academia }}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form.egreso.id_for_label }}">{{ form.egreso.label }}</label>
+        {{ form.egreso }}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form.motivo.id_for_label }}">Motivo</label>
+        {{ form.motivo }}
+        {% if form.motivo.errors %}<span class="fin-field-error">{{ form.motivo.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form.diferencia.id_for_label }}">Diferencia</label>
+        {{ form.diferencia }}
+        <small>{{ form.diferencia.help_text }}</small>
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form.errors %}
+<script>document.getElementById('dialog-ajuste').showModal();</script>
+{% endif %}
+{% endblock %}

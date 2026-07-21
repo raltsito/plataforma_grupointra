@@ -15,13 +15,18 @@ from django.utils import timezone
 
 from apps.core.permisos.grupos import usuario_pertenece_a
 
-from .forms import DonativoForm, EgresoForm, IngresoForm, NominaAcademiaCaptureForm, ReporteRecepcionUploadForm
+from .ajustes import AjusteError, registrar_ajuste
+from .duplicados import DuplicadoError
+from .forms import (
+    AjusteForm, DonativoForm, EgresoForm, HonorarioForm, IngresoForm, MaestroForm,
+    NominaAcademiaCaptureForm, ReporteRecepcionUploadForm, TabuladorAcademiaForm, TabuladorForm,
+)
 from .integraciones.consultorioweb import ConsultorioWebError, obtener_cortes_semanales
 from .integraciones.importador_nomina import cortes_importables, importar_cortes, ya_importado
 from .integraciones.importador_recepcion import importar_citas
 from .integraciones.reporte_recepcion import ReporteRecepcionError, leer_reporte_api, leer_reporte_excel
-from .models import CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, NominaAcademia
-from .nomina_academia import NominaAcademiaError, capturar_nomina_academia
+from .models import Ajuste, CitaRecepcion, Donativo, Egreso, Honorario, Ingreso, NominaAcademia
+from .nomina_academia import capturar_nomina_academia
 from .pdfs import render_pdf
 from .reportes_nomina import resumen_nomina_semanal
 
@@ -235,14 +240,30 @@ def ingresos_view(request):
 def honorarios_view(request):
     hoy = timezone.now().date()
 
+    form_egreso = EgresoForm(initial={'fecha': hoy})
+    form_tabulador = TabuladorForm(initial={'vigente_desde': hoy})
+    form_honorario = HonorarioForm(initial={'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+
     if request.method == 'POST':
-        form_egreso = EgresoForm(request.POST)
-        if form_egreso.is_valid():
-            form_egreso.save()
-            messages.success(request, 'Egreso registrado correctamente.')
-            return redirect('finanzas:honorarios')
-    else:
-        form_egreso = EgresoForm(initial={'fecha': hoy})
+        accion = request.POST.get('accion')
+        if accion == 'tabulador':
+            form_tabulador = TabuladorForm(request.POST)
+            if form_tabulador.is_valid():
+                form_tabulador.save()
+                messages.success(request, 'Tabulador registrado correctamente.')
+                return redirect('finanzas:honorarios')
+        elif accion == 'honorario':
+            form_honorario = HonorarioForm(request.POST)
+            if form_honorario.is_valid():
+                form_honorario.save()
+                messages.success(request, 'Honorario registrado correctamente.')
+                return redirect('finanzas:honorarios')
+        else:
+            form_egreso = EgresoForm(request.POST)
+            if form_egreso.is_valid():
+                form_egreso.save()
+                messages.success(request, 'Egreso registrado correctamente.')
+                return redirect('finanzas:honorarios')
 
     honorarios = (
         Honorario.objects.select_related('terapeuta', 'tabulador')
@@ -257,6 +278,8 @@ def honorarios_view(request):
         'egresos': egresos_mes,
         'total_egresos_periodo': _dinero(_suma(egresos_mes)),
         'form_egreso': form_egreso,
+        'form_tabulador': form_tabulador,
+        'form_honorario': form_honorario,
     }
     return render(request, 'finanzas/honorarios.html', contexto)
 
@@ -471,29 +494,45 @@ def nomina_academia_view(request):
     (sección 6 del documento de requerimientos)."""
     hoy = timezone.now().date()
 
+    form = NominaAcademiaCaptureForm(initial={'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+    form_maestro = MaestroForm()
+    form_tabulador_academia = TabuladorAcademiaForm(initial={'vigente_desde': hoy})
+
     if request.method == 'POST':
-        form = NominaAcademiaCaptureForm(request.POST)
-        if form.is_valid():
-            try:
-                nomina = capturar_nomina_academia(
-                    maestro=form.cleaned_data['maestro'],
-                    periodo_mes=int(form.cleaned_data['periodo_mes']),
-                    periodo_anio=form.cleaned_data['periodo_anio'],
-                    metodo_pago=form.cleaned_data['metodo_pago'],
-                    cantidades=form.cantidades(),
-                    concepto_manual_descripcion=form.cleaned_data['concepto_manual_descripcion'],
-                    concepto_manual_monto=form.cleaned_data['concepto_manual_monto'],
-                )
-                messages.success(
-                    request,
-                    f"Nómina de Academia capturada: {nomina.maestro} · "
-                    f"{nomina.periodo_mes}/{nomina.periodo_anio} · total {_dinero(nomina.total)}.",
-                )
-            except NominaAcademiaError as exc:
-                messages.error(request, str(exc))
-            return redirect('finanzas:nomina_academia')
-    else:
-        form = NominaAcademiaCaptureForm(initial={'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+        accion = request.POST.get('accion')
+        if accion == 'maestro':
+            form_maestro = MaestroForm(request.POST)
+            if form_maestro.is_valid():
+                form_maestro.save()
+                messages.success(request, 'Maestro agregado correctamente.')
+                return redirect('finanzas:nomina_academia')
+        elif accion == 'tabulador_academia':
+            form_tabulador_academia = TabuladorAcademiaForm(request.POST)
+            if form_tabulador_academia.is_valid():
+                form_tabulador_academia.save()
+                messages.success(request, 'Tabulador de Academia registrado correctamente.')
+                return redirect('finanzas:nomina_academia')
+        else:
+            form = NominaAcademiaCaptureForm(request.POST)
+            if form.is_valid():
+                try:
+                    nomina = capturar_nomina_academia(
+                        maestro=form.cleaned_data['maestro'],
+                        periodo_mes=int(form.cleaned_data['periodo_mes']),
+                        periodo_anio=form.cleaned_data['periodo_anio'],
+                        metodo_pago=form.cleaned_data['metodo_pago'],
+                        cantidades=form.cantidades(),
+                        concepto_manual_descripcion=form.cleaned_data['concepto_manual_descripcion'],
+                        concepto_manual_monto=form.cleaned_data['concepto_manual_monto'],
+                    )
+                    messages.success(
+                        request,
+                        f"Nómina de Academia capturada: {nomina.maestro} · "
+                        f"{nomina.periodo_mes}/{nomina.periodo_anio} · total {_dinero(nomina.total)}.",
+                    )
+                except DuplicadoError as exc:
+                    messages.error(request, str(exc))
+                return redirect('finanzas:nomina_academia')
 
     nominas = (
         NominaAcademia.objects.select_related('maestro')
@@ -503,6 +542,8 @@ def nomina_academia_view(request):
     contexto = {
         'vista_actual': 'nomina_academia',
         'form': form,
+        'form_maestro': form_maestro,
+        'form_tabulador_academia': form_tabulador_academia,
         'nominas': nominas,
     }
     return render(request, 'finanzas/nomina_academia.html', contexto)
@@ -524,6 +565,43 @@ def nomina_academia_descargar_view(request, nomina_id):
     }
     nombre_archivo = f'nomina_academia_{nomina.maestro.nombre}_{nomina.periodo_mes}_{nomina.periodo_anio}.pdf'.replace(' ', '_')
     return render_pdf('finanzas/nomina_academia_pdf.html', contexto, nombre_archivo)
+
+
+@acceso_finanzas_requerido
+def ajustes_view(request):
+    """Corrige un Honorario, Nómina Academia o Egreso ya capturado sin
+    reescribir su historial: registra motivo + diferencia, y si la
+    diferencia es un monto adicional a favor, genera un Egreso nuevo
+    (criterio 10 del documento de requerimientos)."""
+    if request.method == 'POST':
+        form = AjusteForm(request.POST)
+        if form.is_valid():
+            modelo, objeto_id = form.registro_elegido()
+            try:
+                ajuste = registrar_ajuste(
+                    modelo, objeto_id, form.cleaned_data['motivo'], form.cleaned_data['diferencia'],
+                )
+                mensaje = f'Ajuste registrado: {_dinero(ajuste.diferencia)}.'
+                if ajuste.egreso_generado_id:
+                    mensaje += ' Se generó un Egreso nuevo por ese monto.'
+                messages.success(request, mensaje)
+            except AjusteError as exc:
+                messages.error(request, str(exc))
+            return redirect('finanzas:ajustes')
+    else:
+        form = AjusteForm()
+
+    ajustes = (
+        Ajuste.objects.select_related('content_type', 'egreso_generado')
+        .prefetch_related('registro')
+        .order_by('-creado_en')[:50]
+    )
+    contexto = {
+        'vista_actual': 'ajustes',
+        'form': form,
+        'ajustes': ajustes,
+    }
+    return render(request, 'finanzas/ajustes.html', contexto)
 
 
 @acceso_finanzas_requerido

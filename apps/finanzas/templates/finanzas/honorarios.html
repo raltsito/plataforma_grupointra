@@ -3,6 +3,8 @@
 
 {% block titulo %}Egresos y Honorarios{% endblock %}
 {% block acciones_header %}
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-tabulador').showModal()">Registrar tabulador</button>
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-honorario').showModal()">Registrar honorario</button>
 <button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-egreso').showModal()">Registrar egreso</button>
 {% endblock %}
 
@@ -108,9 +110,100 @@
 
 </div>
 
+<dialog id="dialog-tabulador" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="tabulador">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar tabulador</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form_tabulador.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form_tabulador.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field">
+        <label for="{{ form_tabulador.categoria.id_for_label }}">Categoría</label>
+        {{ form_tabulador.categoria }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador.pago_base.id_for_label }}">Pago base</label>
+        {{ form_tabulador.pago_base }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador.umbral_pacientes_semana.id_for_label }}">Umbral de pacientes / semana</label>
+        {{ form_tabulador.umbral_pacientes_semana }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador.monto_bono.id_for_label }}">Monto del bono</label>
+        {{ form_tabulador.monto_bono }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_tabulador.vigente_desde.id_for_label }}">Vigente desde</label>
+        {{ form_tabulador.vigente_desde }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_tabulador.errors %}
+<script>document.getElementById('dialog-tabulador').showModal();</script>
+{% endif %}
+
+<dialog id="dialog-honorario" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="honorario">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Registrar honorario</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    {% if form_honorario.non_field_errors %}
+    <div class="fin-alert fin-alert-error" style="margin: 16px 22px 0;">{{ form_honorario.non_field_errors|striptags }}</div>
+    {% endif %}
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_honorario.terapeuta.id_for_label }}">Terapeuta</label>
+        {{ form_honorario.terapeuta }}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_honorario.tabulador.id_for_label }}">Tabulador</label>
+        {{ form_honorario.tabulador }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_honorario.periodo_mes.id_for_label }}">Mes</label>
+        {{ form_honorario.periodo_mes }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_honorario.periodo_anio.id_for_label }}">Año</label>
+        {{ form_honorario.periodo_anio }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_honorario.num_pacientes.id_for_label }}">Pacientes atendidos</label>
+        {{ form_honorario.num_pacientes }}
+      </div>
+      <div class="fin-field">
+        <label for="{{ form_honorario.estatus.id_for_label }}">Estatus</label>
+        {{ form_honorario.estatus }}
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Guardar</button>
+    </div>
+  </form>
+</dialog>
+{% if form_honorario.errors %}
+<script>document.getElementById('dialog-honorario').showModal();</script>
+{% endif %}
+
 <dialog id="dialog-egreso" class="fin-modal">
   <form method="post" class="fin-modal-form">
     {% csrf_token %}
+    <input type="hidden" name="accion" value="egreso">
     <div class="fin-modal-header">
       <div class="fin-card-title">Registrar egreso</div>
       <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>

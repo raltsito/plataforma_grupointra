@@ -16,8 +16,8 @@ Estado tomado el 2026-07-21 comparando el documento contra el codigo de `apps/fi
 | 6 | Datos de recepcion alimentan ingresos, pacientes, terapeutas, ranking, metodos de pago | Hecho (2026-07-21, Fase 2) |
 | 7 | Nomina Academia: seleccionar maestro y capturar conceptos por cantidad | Hecho (2026-07-21, Fase 3) |
 | 8 | Nomina Academia calcula automaticamente con tabuladores configurables | Hecho (2026-07-21, Fase 3) |
-| 9 | Bloqueo de duplicados por periodo/persona/concepto | Parcial (cubre ConsultorioWeb import, Honorario mensual, CitaRecepcion y NominaAcademia; falta generalizar en un solo helper) |
-| 10 | Ajustes posteriores se registran como "Ajuste", sin reescribir historial | Falta (Fase 4) |
+| 9 | Bloqueo de duplicados por periodo/persona/concepto | Hecho (2026-07-21, Fase 4 — helper compartido `existe_duplicado`, con nota de diseño: los imports/sync usan upsert a propósito, no el helper de bloqueo) |
+| 10 | Ajustes posteriores se registran como "Ajuste", sin reescribir historial | Hecho (2026-07-21, Fase 4 — alcance acotado con el usuario, ver detalle abajo) |
 
 Lo ya construido vive en `apps/finanzas/integraciones/consultorioweb.py` e `importador_nomina.py` (import de cortes semanales via API de ConsultorioWeb) y en el modelo `Egreso` (campos `metodo_pago`, `estatus`, `referencia_externa`).
 
@@ -68,13 +68,25 @@ Lo ya construido vive en `apps/finanzas/integraciones/consultorioweb.py` e `impo
 - [x] Descarga en PDF (`nomina_academia_descargar_view`, reusando `render_pdf` de la Fase 1): encabezado (Nomina Academia, maestro, periodo, estatus), tabla por concepto (docente, concepto, cantidad, tarifa, subtotal, metodo, estatus) con fila TOTAL A PAGAR, y totales (por docente, transferencia, efectivo, pendiente).
 - [x] Probado extremo a extremo: captura con tabuladores reales (3 horas clase × $150 + 1 mesa de trabajo × $200 = $650, calculo verificado), 2 Egresos generados correctamente, segunda captura del mismo maestro/periodo bloqueada, captura solo con concepto manual ($500), formulario vacio rechazado sin crear nomina, y PDF descargado y verificado visualmente.
 - [ ] Nota: la validacion de duplicados aqui es "todo o nada" por maestro/periodo (no permite re-capturar ni agregar conceptos sueltos despues) — la Fase 4 (estados + ajustes) debe agregar la forma correcta de corregir una nomina ya capturada.
+- [x] **Desplegado a produccion (2026-07-21):** commit `5c637b5`, push a GitHub exitoso, `railway up` en CentralizacionIntra. Migracion `0005_maestro_tabuladoracademia_alter_egreso_categoria_and_more` aplicada en produccion sin errores. Verificado: `https://portal.grupointra.mx/finanzas/nomina-academia/` responde 200.
 
-### Fase 4 — Estados, botones y controles unificados (criterio 10, complementa el 9)
-- [ ] Introducir estado `Sellado` y `Ajuste` (hoy solo existe Pagado/Pendiente/Parcial) en los modelos relevantes: `Egreso`, `Honorario`, y los nuevos de Academia/Recepcion.
-  - Reglas de transicion (tabla seccion 7 del doc): Borrador → editable/eliminable; Pendiente → cambiar metodo, marcar pagado, descargar; Pagado → bloquear cambios sensibles, permitir observaciones; Sellado → genera egreso automatico y bloquea duplicados; Ajuste → requiere motivo y diferencia, no reescribe historial original.
-- [ ] Unificar botones segun tabla de la seccion 7: Ver detalle, Guardar borrador, Sellar terapeuta/docente, Sellar periodo, Descargar imagen, Exportar PDF, Registrar ajuste.
-- [ ] Generalizar la validacion de duplicados (hoy solo cubre `Egreso.referencia_externa` y `Honorario` mensual) a un helper reusable por periodo+persona+concepto, aplicable a Academia y Recepcion tambien.
-- [ ] Modelo/flujo de "Ajuste": nueva entrada que referencia el registro original, guarda motivo + diferencia, sin tocar el monto/estado ya sellado.
+### Fase 4 — Estados, botones y controles unificados (criterio 10, complementa el 9) — COMPLETADA (2026-07-21)
+Alcance acotado con el usuario antes de construir (para no arriesgar los flujos de Nomina Academia/Recepcion ya en produccion):
+- Se decidio NO tocar el flujo de captura de Nomina Academia (sigue siendo captura = sellado inmediato, un solo paso) — solo se agrego el mecanismo de Ajuste para corregir despues.
+- Se decidio que Ajuste (y cualquier otra captura que solo existia via /admin/) se registra con un modal en la UI de Finanzas, no solo por /admin/.
+- Se decidio generalizar la validacion de duplicados en un helper compartido.
+
+- [x] `apps/finanzas/duplicados.py`: `existe_duplicado(modelo, **filtros)` + `DuplicadoError`. Usado por `NominaAcademia` (refactorizado, ya no tiene su propia `NominaAcademiaError`) y por el nuevo `HonorarioForm`. `Egreso.referencia_externa` (import ConsultorioWeb) y `CitaRecepcion` (import Recepcion) **deliberadamente NO usan este helper** — son flujos de sincronizacion que deben actualizar el registro existente (`get_or_create`/`update_or_create`), no rechazarlo; usar el helper de bloqueo ahi seria incorrecto. Documentado en el propio modulo.
+- [x] Modelo `Ajuste` (generic FK a `Honorario`, `NominaAcademia` o `Egreso` via `django.contrib.contenttypes`): `motivo`, `diferencia`, `egreso_generado` (OneToOne opcional). Los registros originales (`Honorario.total`, `NominaAcademia.total`) nunca se tocan — siguen congelados como ya funcionaban.
+- [x] `apps/finanzas/ajustes.py::registrar_ajuste(modelo, objeto_id, motivo, diferencia)`: si la diferencia es positiva (monto adicional a favor), genera un Egreso nuevo separado (categoria segun el tipo de origen). Si es negativa, solo queda registrada para trazabilidad — **no se modela nota de credito/reembolso todavia** (limitacion documentada, no una omision).
+- [x] Nueva pantalla "Ajustes" (`finanzas/ajustes/`) con modal de captura (elegir Honorario, NominaAcademia o Egreso a corregir + motivo + diferencia) y tabla de ajustes registrados.
+- [x] Modales agregados para todo lo que antes solo se creaba via `/admin/` (pedido explicito del usuario, "si hay mas cosas que solo se agregan en /admin hazles modal a todas"):
+  - `Tabulador` (terapeutas) y `Honorario` → modales en `honorarios.html`.
+  - `Maestro` y `TabuladorAcademia` → modales en `nomina_academia.html`.
+  - `HonorarioForm` usa `existe_duplicado` para bloquear un honorario duplicado de terapeuta/periodo con un mensaje amigable (antes solo existia el `unique_together` crudo de Django admin).
+- [x] Bug encontrado y corregido durante las pruebas: `ModelChoiceField` con un queryset recortado (`[:200]`) rompe la validacion interna de Django (`queryset.get(pk=...)` sobre un queryset ya con slice lanza `TypeError`, que Django traduce silenciosamente en "Select a valid choice"). Se quito el slice en los 3 `ModelChoiceField` de `AjusteForm`.
+- [x] Probado extremo a extremo (12 casos): alta de Tabulador/Honorario/Maestro/TabuladorAcademia via modal, honorario duplicado bloqueado, ajuste positivo sobre Honorario (genera Egreso, no reescribe el total original), ajuste positivo sobre NominaAcademia (idem), ajuste negativo (no genera Egreso, si queda registrado), formulario de ajuste sin seleccion y con doble seleccion (ambos rechazados), listado de ajustes.
+- [ ] Pendiente (fuera de alcance de esta fase, documentado como decision consciente): el flujo Borrador → Pendiente → Pagado → Sellado completo del documento (seccion 7) no se implemento tal cual; Nomina Academia y Recepcion siguen siendo "captura = resultado final". Si se necesita mas adelante, retomar desde aqui.
 
 ## Decisiones pendientes de confirmar con el solicitante (Administracion INTRA / Jesus)
 1. Reporte General de Recepcion: ¿existe API como ConsultorioWeb, o solo exportacion Excel? Define si Fase 2 es un importador de archivo o un cliente API.
