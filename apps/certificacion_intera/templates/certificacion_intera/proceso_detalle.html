@@ -15,7 +15,7 @@
 
                     <p>
                         {{ proceso.escuela.nombre }} ·
-                        {{ proceso.get_estado_display }} ·
+                        {% if proceso_cerrado %}Finalizado{% else %}{{ proceso.get_estado_display }}{% endif %} ·
                         Inicio {{ proceso.fecha_inicio|date:'d/m/Y' }}
                     </p>
                 </div>
@@ -88,6 +88,15 @@
                 >
                     Bitácora
                 </a>
+
+                {% if not proceso_cerrado %}
+                    <a
+                        class="intera-tab-action"
+                        href="{% url 'certificacion_intera:proceso_cerrar' proceso.id %}"
+                    >
+                        Cerrar proceso
+                    </a>
+                {% endif %}
             </nav>
         </section>
 
@@ -122,18 +131,37 @@
                                 class="intera-public-link"
                                 readonly
                                 aria-label="Enlace público de la aplicación"
-                                value="{{ request.scheme }}://{{ request.get_host }}{{ aplicacion_publica_general.url_publica }}"
+                                value="{{ url_publica_general }}"
                             >
 
                             <button
                                 class="intera-btn intera-btn-secondary"
                                 type="button"
                                 data-copy-general
-                                data-copy-value="{{ request.scheme }}://{{ request.get_host }}{{ aplicacion_publica_general.url_publica }}"
+                                data-copy-value="{{ url_publica_general }}"
                             >
                                 Copiar enlace
                             </button>
                         </div>
+
+                        <section class="aplicacion-publica__qr">
+                            <h3>Código QR</h3>
+
+                            <img
+                                src="{% url 'certificacion_intera:aplicacion_publica_proceso_qr' proceso.id %}"
+                                alt="Código QR del acceso público"
+                                width="220"
+                                height="220"
+                            >
+
+                            <a
+                                class="intera-btn intera-btn-secondary intera-btn-small"
+                                href="{% url 'certificacion_intera:aplicacion_publica_proceso_qr' proceso.id %}?descargar=1"
+                                download="acceso-intera-{{ proceso.id }}.svg"
+                            >
+                                Descargar QR
+                            </a>
+                        </section>
 
                         <div
                             class="aplicacion-publica__acciones"

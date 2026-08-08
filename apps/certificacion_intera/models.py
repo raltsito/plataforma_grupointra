@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from apps.portafolio.models import Instrumento, PreguntaInstrumento, RevisionInstrumento
+from .instrumentos import es_instrumento_de_flujo_interno
 
 
 class Escuela(models.Model):
@@ -122,6 +123,10 @@ class ConfiguracionInstrumento(models.Model):
         verbose_name_plural = 'Configuraciones de instrumentos'
 
     def clean(self):
+        if self.instrumento_id and es_instrumento_de_flujo_interno(self.instrumento):
+            raise ValidationError(
+                'Este instrumento pertenece a un flujo interno y no puede formar parte de la batería.',
+            )
         if not self.instrumento.activo:
             raise ValidationError('No es posible configurar un instrumento inactivo.')
         if self.fecha_cierre and self.fecha_inicio and (self.fecha_cierre < self.fecha_inicio):

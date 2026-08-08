@@ -2,9 +2,10 @@
 
 import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
 
-from django.core.files import File
+from django.core.files.base import ContentFile
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from openpyxl import load_workbook
@@ -34,6 +35,90 @@ TIPOS = {
     'opcion_multiple',
     'texto_libre',
 }
+
+
+def _clave_normalizada(valor):
+    return ''.join(
+        caracter
+        for caracter in str(valor or '').lower()
+        if caracter.isalnum()
+    )
+
+
+def _valor_metadato(metadatos, *nombres):
+    claves = {_clave_normalizada(nombre) for nombre in nombres}
+    for nombre, valor in metadatos.items():
+        if _clave_normalizada(nombre) in claves and valor not in (None, ''):
+            return valor
+    return None
+
+
+def _metadatos_instrumento(filas):
+    """Conserva los pares del Excel y normaliza instrucciones en texto libre."""
+    metadatos = {}
+    instrucciones = []
+    leyendo_instrucciones = False
+
+    for fila in filas:
+        etiqueta = str(fila[0]).strip() if fila and fila[0] is not None else ''
+        valor = fila[1] if len(fila) > 1 else None
+        etiqueta_normalizada = _clave_normalizada(etiqueta)
+
+        if etiqueta and valor not in (None, ''):
+            metadatos[etiqueta] = valor
+            leyendo_instrucciones = False
+            continue
+        if etiqueta and 'instruccion' in etiqueta_normalizada:
+            metadatos[etiqueta] = valor
+            leyendo_instrucciones = True
+            continue
+        if (
+            etiqueta
+            and valor in (None, '')
+            and leyendo_instrucciones
+            and not etiqueta_normalizada.startswith(('aviso', 'nota'))
+        ):
+            instrucciones.append(etiqueta)
+            continue
+        if etiqueta:
+            metadatos[etiqueta] = valor
+        leyendo_instrucciones = False
+
+    if instrucciones:
+        metadatos['instrucciones'] = '\n\n'.join(instrucciones)
+    return metadatos
+
+
+def _booleano(valor):
+    if isinstance(valor, bool):
+        return valor
+    return str(valor or '').strip().lower() in {'1', 'true', 'si', 'sí'}
+
+
+def _condicion_visibilidad(valor):
+    if not isinstance(valor, str):
+        return valor or None
+    try:
+        return json.loads(valor)
+    except json.JSONDecodeError as error:
+        raise ValidationError('PREGUNTAS contiene una condición de visibilidad inválida.') from error
+
+
+def _campos_contexto_requeridos(metadatos, primera):
+    campos = set()
+    for nombre, valor in metadatos.items():
+        clave = _clave_normalizada(nombre)
+        if 'contexto' not in clave and 'requer' not in clave:
+            continue
+        valores = valor if isinstance(valor, (list, tuple, set)) else str(valor or '').split(',')
+        campos.update(
+            str(campo).strip().lower()
+            for campo in valores
+            if str(campo).strip().lower() in {'sexo', 'fecha_nacimiento', 'edad'}
+        )
+    if primera.get('edad_min') is not None or primera.get('edad_max') is not None:
+        campos.add('fecha_nacimiento')
+    return sorted(campos)
 
 
 def _filas(hoja):
@@ -71,26 +156,31 @@ def _tabla(filas, encabezado):
     return []
 
 
-def leer_excel(ruta):
-    ruta = Path(ruta)
-
+def leer_excel(origen):
+    nombre = Path(getattr(origen, 'name', origen)).name
     try:
-        contenido = ruta.read_bytes()
+        if hasattr(origen, 'read'):
+            origen.seek(0)
+            contenido = origen.read()
+            origen.seek(0)
+        else:
+            contenido = Path(origen).read_bytes()
         libro = load_workbook(
-            ruta,
+            BytesIO(contenido),
             read_only=True,
             data_only=False,
         )
     except Exception as error:
         raise ValidationError(
-            f'{ruta.name}: no fue posible leer el archivo.'
+            f'{nombre}: no fue posible leer el archivo.'
         ) from error
 
     faltantes = HOJAS_REQUERIDAS - set(libro.sheetnames)
 
     if faltantes:
+        libro.close()
         raise ValidationError(
-            f'{ruta.name}: faltan hojas requeridas: '
+            f'{nombre}: faltan hojas requeridas: '
             f'{", ".join(sorted(faltantes))}.'
         )
 
@@ -98,15 +188,7 @@ def leer_excel(ruta):
         libro['INSTRUMENTO']
     )
 
-    valores = {
-        str(f[0]).strip(): f[1]
-        for f in instrumento_filas
-        if (
-            len(f) > 1
-            and f[0]
-            and str(f[0]).strip() not in {'Campo'}
-        )
-    }
+    valores = _metadatos_instrumento(instrumento_filas)
 
     preguntas = _tabla(
         _filas(libro['PREGUNTAS']),
@@ -133,29 +215,48 @@ def leer_excel(ruta):
     )
 
     if not preguntas:
+        libro.close()
         raise ValidationError(
-            f'{ruta.name}: PREGUNTAS no contiene filas.'
+            f'{nombre}: PREGUNTAS no contiene filas.'
         )
 
     if (
         not calculadora.get('clave_calculadora')
         or not calculadora.get('version_regla')
     ):
+        libro.close()
         raise ValidationError(
-            f'{ruta.name}: CALCULADORA_SISTEMA requiere '
+            f'{nombre}: CALCULADORA_SISTEMA requiere '
             'clave_calculadora y version_regla.'
         )
 
-    return {
-        'ruta': ruta,
+    estructura_para_huella = {
+        'instrumento': valores,
+        'preguntas': preguntas,
+        'calculadora': calculadora,
+        'casos': casos,
+    }
+    huella = hashlib.sha256(
+        json.dumps(
+            estructura_para_huella,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        ).encode('utf-8'),
+    ).hexdigest()
+
+    datos = {
+        'nombre_archivo': nombre,
         'contenido': contenido,
-        'huella': hashlib.sha256(contenido).hexdigest(),
+        'huella': huella,
         'instrumento': valores,
         'preguntas': preguntas,
         'calculadora': calculadora,
         'calculadora_filas': calculadora_filas,
         'casos': casos,
     }
+    libro.close()
+    return datos
 
 
 def validar(datos):
@@ -238,6 +339,11 @@ def validar(datos):
             raise ValidationError(
                 f'{datos["ruta"].name}: PREGUNTAS requiere {campo}.'
             )
+
+    if str(datos['calculadora']['version_regla']) != str(primera['version']):
+        raise ValidationError(
+            f'{datos["ruta"].name}: version_regla debe coincidir con la versión del instrumento.'
+        )
 
     return datos
 
@@ -436,14 +542,15 @@ def ejecutar_calculadora(
     }
 
 
-def importar(ruta, dry_run=False):
+def importar(origen, dry_run=False, nombre_archivo=None, cargado_por=None):
     datos = validar(
-        leer_excel(ruta)
+        leer_excel(origen)
     )
 
     primera = datos['preguntas'][0]
     clave = primera['instrumento_clave']
     version = str(primera['version'])
+    nombre_archivo = Path(nombre_archivo or datos['nombre_archivo']).name
     definicion = _definicion(datos)
 
     estado = _estado_calculadora_por_instrumento(
@@ -452,7 +559,7 @@ def importar(ruta, dry_run=False):
     )
 
     reporte = {
-        'archivo': datos['ruta'].name,
+        'archivo': nombre_archivo,
         'clave': clave,
         'version': version,
         'preguntas': len(datos['preguntas']),
@@ -462,9 +569,10 @@ def importar(ruta, dry_run=False):
         'dry_run': dry_run,
     }
 
-    existente = Instrumento.objects.filter(
-        clave=clave
-    ).first()
+    try:
+        existente = Instrumento.objects.get(clave=clave)
+    except Instrumento.DoesNotExist:
+        existente = None
 
     if (
         existente
@@ -492,45 +600,35 @@ def importar(ruta, dry_run=False):
             nombre='Instrumento'
         )
 
-        documento = (
-            ImportacionInstrumento.objects
-            .filter(
-                huella_contenido=datos['huella']
-            )
-            .select_related('documento')
-            .values_list(
-                'documento',
-                flat=True,
-            )
-            .first()
-        )
-
-        documento = (
+        documentos = list(
             Documento.objects.filter(
-                pk=documento
-            ).first()
-            if documento
-            else None
+                importaciones_instrumento__huella_contenido=datos['huella'],
+            ).distinct()
         )
+        if len(documentos) > 1:
+            raise ValidationError(
+                f'{clave}: existen varios Documentos con la misma huella; requiere revisión administrativa.'
+            )
+        documento = documentos[0] if documentos else None
 
         if not documento:
-            with datos['ruta'].open('rb') as archivo:
-                documento = Documento(
-                    nombre=datos['ruta'].stem,
-                    categoria=categoria,
-                    version=version,
-                    descripcion=(
-                        'Documento origen importado por Portafolio.'
-                    ),
-                )
+            documento = Documento(
+                nombre=Path(nombre_archivo).stem,
+                categoria=categoria,
+                version=version,
+                cargado_por=cargado_por,
+                descripcion=(
+                    'Documento origen importado por Portafolio.'
+                ),
+            )
 
-                documento.archivo.save(
-                    datos['ruta'].name,
-                    File(archivo),
-                    save=False,
-                )
+            documento.archivo.save(
+                nombre_archivo,
+                ContentFile(datos['contenido']),
+                save=False,
+            )
 
-                documento.save()
+            documento.save()
 
         instrumento = existente or Instrumento(
             clave=clave
@@ -540,11 +638,17 @@ def importar(ruta, dry_run=False):
         instrumento.version = version
         instrumento.documento_origen = documento
         instrumento.descripcion = str(
-            datos['instrumento'].get('descripcion') or ''
+            _valor_metadato(datos['instrumento'], 'descripcion') or ''
         )
         instrumento.instrucciones = str(
-            datos['instrumento'].get('instrucciones') or ''
+            _valor_metadato(
+                datos['instrumento'],
+                'instrucciones',
+                'instrucciones para la aplicacion',
+                'instrucciones para la persona evaluada',
+            ) or ''
         )
+        instrumento.activo = True
         instrumento.full_clean()
         instrumento.save()
 
@@ -557,11 +661,22 @@ def importar(ruta, dry_run=False):
                     **datos['instrumento'],
                     'variante': (
                         primera.get('variante')
-                        or datos['instrumento'].get('variante')
+                        or _valor_metadato(datos['instrumento'], 'variante')
                     ),
-                    'poblacion': primera.get('poblacion'),
+                    'poblacion': (
+                        primera.get('poblacion')
+                        or _valor_metadato(
+                            datos['instrumento'],
+                            'poblacion',
+                            'poblacion objetivo',
+                        )
+                    ),
                     'edad_min': primera.get('edad_min'),
                     'edad_max': primera.get('edad_max'),
+                    'campos_contexto_requeridos': _campos_contexto_requeridos(
+                        datos['instrumento'],
+                        primera,
+                    ),
                 },
             },
         )
@@ -579,9 +694,9 @@ def importar(ruta, dry_run=False):
                     opciones=json.loads(
                         p.get('opciones_json') or 'null'
                     ),
-                    requerida=bool(p.get('requerida')),
+                    requerida=_booleano(p.get('requerida')),
                     condicion_visibilidad=(
-                        p.get('visibilidad') or None
+                        _condicion_visibilidad(p.get('visibilidad'))
                     ),
                 )
                 for p in datos['preguntas']
@@ -608,7 +723,7 @@ def importar(ruta, dry_run=False):
             },
         )
 
-        CalculadoraInstrumento.objects.update_or_create(
+        calculadora, _ = CalculadoraInstrumento.objects.update_or_create(
             instrumento=instrumento,
             clave=datos['calculadora']['clave_calculadora'],
             version_regla=str(
@@ -623,5 +738,19 @@ def importar(ruta, dry_run=False):
                 'huella_contenido': datos['huella'],
             },
         )
+        CalculadoraInstrumento.objects.filter(
+            instrumento=instrumento,
+            version_regla=version,
+        ).exclude(pk=calculadora.pk).delete()
 
     return reporte
+
+
+def importar_archivo_subido(archivo, cargado_por=None):
+    """Entrega un archivo web al importador estructurado sin otro parser."""
+    nombre_archivo = Path(archivo.name).name
+    return importar(
+        archivo,
+        nombre_archivo=nombre_archivo,
+        cargado_por=cargado_por,
+    )

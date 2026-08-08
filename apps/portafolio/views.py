@@ -1,14 +1,18 @@
 from functools import wraps
+from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.exceptions import PermissionDenied
+from django.http import FileResponse
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db.models import Q
 from apps.core.permisos.grupos import usuario_pertenece_a
-from .forms import DocumentoForm, InstrumentoForm, PlantillaPDFForm, PreguntaInstrumentoForm, RecursoCompartidoForm, ReporteForm
+from .forms import DocumentoForm, ImportarInstrumentoForm, InstrumentoForm, PlantillaPDFForm, PreguntaInstrumentoForm, RecursoCompartidoForm, ReporteForm
 from .models import Documento, Instrumento, PlantillaPDF, PreguntaInstrumento, RecursoCompartido, Reporte
 from .services_importacion import importar_preguntas_desde_documento
+from .services_importacion_instrumentos import importar_archivo_subido
 
 CATALOGOS = {
     'instrumento': (Instrumento, InstrumentoForm, 'portafolio:instrumentos'),
@@ -49,7 +53,46 @@ def _catalogo(request, modelo, template, titulo, vista, crear_url, form_class=No
 
 
 @acceso_portafolio_requerido
-def instrumentos_view(request): return _catalogo(request, Instrumento, 'portafolio/catalogo.html', 'Instrumentos', 'instrumentos', 'portafolio:instrumentos', InstrumentoForm)
+def instrumentos_view(request):
+    formulario_importacion = ImportarInstrumentoForm()
+    if request.method == 'POST' and request.POST.get('accion') == 'importar':
+        formulario_importacion = ImportarInstrumentoForm(request.POST, request.FILES)
+        if formulario_importacion.is_valid():
+            try:
+                reporte = importar_archivo_subido(
+                    formulario_importacion.cleaned_data['archivo'],
+                    cargado_por=request.user,
+                )
+            except ValidationError as error:
+                formulario_importacion.add_error('archivo', '; '.join(error.messages))
+            else:
+                if reporte['decision'] == 'sin cambios':
+                    messages.info(request, 'El instrumento ya se encuentra importado y no presenta cambios.')
+                else:
+                    messages.success(
+                        request,
+                        'Instrumento importado correctamente. '
+                        f"Versión: {reporte['version']}. "
+                        f"Preguntas: {reporte['preguntas']}. "
+                        f"Calculadora: {reporte['estado_calculadora']}.",
+                    )
+                return redirect('portafolio:instrumentos')
+    formulario_manual = InstrumentoForm(request.POST or None, request.FILES or None)
+    if request.method == 'POST' and not request.POST.get('accion') and formulario_manual.is_valid():
+        formulario_manual.save()
+        return redirect('portafolio:instrumentos')
+    return render(
+        request,
+        'portafolio/catalogo.html',
+        {
+            'vista_actual': 'instrumentos',
+            'titulo': 'Instrumentos',
+            'items': Instrumento.objects.all(),
+            'form': formulario_manual,
+            'formulario_importacion': formulario_importacion,
+            'es_instrumento': True,
+        },
+    )
 
 
 @acceso_portafolio_requerido
@@ -100,6 +143,33 @@ def documentos_view(request):
     if categoria: documentos = documentos.filter(categoria_id=categoria)
     from .models import CategoriaDocumento
     return render(request, 'portafolio/documentos.html', {'vista_actual': 'documentos', 'form': form, 'items': documentos, 'busqueda': busqueda, 'categoria_actual': categoria, 'categorias': CategoriaDocumento.objects.filter(activa=True)})
+
+
+@acceso_portafolio_requerido
+def documento_descargar_view(request, documento_id):
+    documento = get_object_or_404(Documento, id=documento_id)
+    archivo = documento.archivo
+    if not archivo or not archivo.name or not archivo.storage.exists(archivo.name):
+        return render(
+            request,
+            'portafolio/archivo_no_disponible.html',
+            {'documento': documento},
+            status=404,
+        )
+    try:
+        contenido = archivo.storage.open(archivo.name, 'rb')
+    except Exception:
+        return render(
+            request,
+            'portafolio/archivo_no_disponible.html',
+            {'documento': documento},
+            status=404,
+        )
+    return FileResponse(
+        contenido,
+        as_attachment=True,
+        filename=Path(archivo.name).name,
+    )
 @acceso_portafolio_requerido
 def plantillas_view(request): return _catalogo(request, PlantillaPDF, 'portafolio/catalogo.html', 'Plantillas PDF', 'plantillas', 'portafolio:plantillas', PlantillaPDFForm)
 @acceso_portafolio_requerido
@@ -119,7 +189,112 @@ def editar_view(request, tipo, item_id):
 
 @acceso_portafolio_requerido
 def eliminar_view(request, tipo, item_id):
+    if tipo == 'documento':
+        return eliminar_documento_view(request, item_id)
+    if tipo == 'instrumento':
+        return eliminar_instrumento_view(request, item_id)
     modelo, _, destino = CATALOGOS[tipo]
     item = get_object_or_404(modelo, id=item_id)
     if request.method == 'POST': item.delete(); return redirect(destino)
     return render(request, 'portafolio/eliminar.html', {'item': item, 'volver': destino})
+
+
+def _referencias_documento(documento):
+    referencias = []
+    for nombre, descripcion in (
+        ('instrumentos_origen', 'un instrumento'),
+        ('importaciones_instrumento', 'una importación de instrumento'),
+        ('plantillas_pdf', 'una plantilla PDF'),
+        ('recursos_compartidos', 'un recurso compartido'),
+    ):
+        if getattr(documento, nombre).exists():
+            referencias.append(descripcion)
+    return referencias
+
+
+def _programar_eliminacion_archivo(archivo):
+    if archivo and archivo.name:
+        transaction.on_commit(lambda: archivo.storage.delete(archivo.name))
+
+
+@acceso_portafolio_requerido
+def eliminar_documento_view(request, item_id):
+    documento = get_object_or_404(Documento, id=item_id)
+    referencias = _referencias_documento(documento)
+    contexto = {
+        'item': documento,
+        'titulo': 'Eliminar documento',
+        'volver': 'portafolio:documentos',
+        'referencias': referencias,
+    }
+    if referencias:
+        contexto['mensaje_bloqueo'] = (
+            'Este documento está siendo utilizado por ' + ', '.join(referencias) +
+            ' y no puede eliminarse.'
+        )
+        if request.method == 'POST':
+            messages.error(request, contexto['mensaje_bloqueo'])
+            return redirect('portafolio:documentos')
+        return render(request, 'portafolio/eliminar.html', contexto)
+    if request.method == 'POST':
+        archivo = documento.archivo
+        with transaction.atomic():
+            documento.delete()
+            _programar_eliminacion_archivo(archivo)
+        messages.success(request, 'Documento eliminado correctamente.')
+        return redirect('portafolio:documentos')
+    return render(request, 'portafolio/eliminar.html', contexto)
+
+
+def _referencias_instrumento(instrumento):
+    referencias = []
+    if instrumento.configuraciones_intera.exists():
+        referencias.append('configuraciones de procesos de certificación')
+    if instrumento.aplicaciones_intera.exists():
+        referencias.append('aplicaciones de Certificación INTERA')
+    if instrumento.entrevistaunoauno_set.exists():
+        referencias.append('entrevistas 1:1')
+    if instrumento.preguntas.filter(respuestas_intera__isnull=False).exists():
+        referencias.append('respuestas de instrumentos')
+    if instrumento.preguntas.filter(respuestaentrevistaunoauno__isnull=False).exists():
+        referencias.append('respuestas de entrevistas 1:1')
+    if instrumento.revisiones.filter(entrevistaunoauno__isnull=False).exists():
+        referencias.append('revisiones usadas por entrevistas 1:1')
+    return referencias
+
+
+@acceso_portafolio_requerido
+def eliminar_instrumento_view(request, item_id):
+    instrumento = get_object_or_404(Instrumento, id=item_id)
+    referencias = _referencias_instrumento(instrumento)
+    contexto = {
+        'item': instrumento,
+        'titulo': 'Eliminar instrumento',
+        'volver': 'portafolio:instrumentos',
+    }
+    if referencias:
+        contexto['mensaje_bloqueo'] = (
+            'Este instrumento tiene historial en ' + ', '.join(referencias) +
+            ' y no puede eliminarse. Puedes desactivarlo para impedir nuevas aplicaciones.'
+        )
+        if request.method == 'POST':
+            messages.error(request, contexto['mensaje_bloqueo'])
+            return redirect('portafolio:instrumentos')
+        return render(request, 'portafolio/eliminar.html', contexto)
+    if request.method == 'POST':
+        documento = instrumento.documento_origen
+        try:
+            documento_importado = instrumento.importacion.documento_id == instrumento.documento_origen_id
+        except Instrumento.importacion.RelatedObjectDoesNotExist:
+            documento_importado = False
+        with transaction.atomic():
+            instrumento.calculadoras.all().delete()
+            instrumento.revisiones.all().delete()
+            instrumento.delete()
+            if documento_importado and documento and not _referencias_documento(documento):
+                archivo = documento.archivo
+                documento.delete()
+                _programar_eliminacion_archivo(archivo)
+        messages.success(request, 'Instrumento eliminado correctamente.')
+        return redirect('portafolio:instrumentos')
+    return render(request, 'portafolio/eliminar.html', contexto)

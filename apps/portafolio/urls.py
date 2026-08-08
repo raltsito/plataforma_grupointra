@@ -42,6 +42,11 @@ urlpatterns = [
         name='documentos',
     ),
     path(
+        'documentos/<int:documento_id>/descargar/',
+        views.documento_descargar_view,
+        name='documento_descargar',
+    ),
+    path(
         'plantillas-pdf/',
         views.plantillas_view,
         name='plantillas',

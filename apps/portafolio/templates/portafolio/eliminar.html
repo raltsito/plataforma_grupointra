@@ -5,6 +5,12 @@
 {% endblock %}
 
 {% block contenido %}
+    {% if mensaje_bloqueo %}
+        <section class="card form">
+            <p class="error">{{ mensaje_bloqueo }}</p>
+            <p><a href="{% url volver %}">Volver</a></p>
+        </section>
+    {% else %}
     <section class="card form">
         <p>¿Eliminar “{{ item }}”?</p>
 
@@ -14,4 +20,5 @@
             <button>Eliminar</button>
         </form>
     </section>
+    {% endif %}
 {% endblock %}

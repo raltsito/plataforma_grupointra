@@ -1,10 +1,14 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+from io import BytesIO
 
+import qrcode
+from qrcode.image.svg import SvgPathImage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.db import transaction
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
@@ -41,6 +45,10 @@ from .models import (
     ProcesoCertificacion,
     RespuestaInstrumento,
 )
+from .instrumentos import (
+    CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
+    excluir_instrumentos_de_flujo_interno,
+)
 from apps.portafolio.models import (
     CalculadoraInstrumento,
     Instrumento,
@@ -52,6 +60,7 @@ from apps.portafolio.services_calificacion import (
     obtener_revision_resultado,
 )
 from .services import (
+    cerrar_proceso,
     obtener_aplicacion_publica,
     obtener_aplicacion_publica_proceso,
     proceso_es_editable,
@@ -199,7 +208,9 @@ def _proceso_editable_o_redirigir(request, proceso):
 
 
 def _instrumentos_para_bateria():
-    instrumentos = Instrumento.objects.filter(activo=True).annotate(
+    instrumentos = excluir_instrumentos_de_flujo_interno(
+        Instrumento.objects.filter(activo=True),
+    ).annotate(
         numero_reactivos=Count('preguntas'),
     ).prefetch_related('calculadoras').order_by('nombre', 'version', 'id')
     etiquetas = {
@@ -327,7 +338,9 @@ def _orden_bateria_post(request, instrumentos):
 def dashboard_view(request):
     procesos = ProcesoCertificacion.objects.select_related('escuela').all()
     activos = procesos.exclude(estado=ProcesoCertificacion.Estado.CERRADO)
-    aplicaciones = AplicacionInstrumento.objects.all()
+    aplicaciones = AplicacionInstrumento.objects.exclude(
+        instrumento__clave__in=CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
+    )
     completadas = aplicaciones.filter(estado=AplicacionInstrumento.Estado.RESPONDIDA).count()
     pendientes_entrevista = Participante.objects.filter(entrevista__isnull=True).count()
     pendientes = []
@@ -834,6 +847,8 @@ def proceso_detalle_view(request, proceso_id):
         proceso.configuraciones_instrumento.select_related(
             'instrumento',
             'aplicacion_publica',
+        ).exclude(
+            instrumento__clave__in=CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
         ),
     )
     tarjetas_instrumento = []
@@ -916,6 +931,11 @@ def proceso_detalle_view(request, proceso_id):
     completos, total_participantes, progreso_bateria = _progreso_bateria(proceso)
     entrevistas_pendientes = _entrevistas_pendientes(participantes)
     aplicacion_publica_general = AplicacionPublica.objects.filter(proceso=proceso).first()
+    url_publica_general = (
+        request.build_absolute_uri(aplicacion_publica_general.url_publica)
+        if aplicacion_publica_general
+        else ''
+    )
     return render(
         request,
         'certificacion_intera/proceso_detalle.html',
@@ -933,6 +953,7 @@ def proceso_detalle_view(request, proceso_id):
             'configuraciones': configuraciones,
             'tarjetas_instrumento': tarjetas_instrumento,
             'aplicacion_publica_general': aplicacion_publica_general,
+            'url_publica_general': url_publica_general,
             'aplicaciones': aplicaciones[:12],
             'resultados': respondidas[:12],
             'entrevistas': entrevistas[:12],
@@ -951,12 +972,46 @@ def proceso_detalle_view(request, proceso_id):
     )
 
 
+@acceso_certificacion_intera_requerido
+
+
+def proceso_cerrar_view(request, proceso_id):
+    proceso = _proceso(proceso_id)
+    if request.method == 'POST':
+        with transaction.atomic():
+            proceso = ProcesoCertificacion.objects.select_for_update().get(
+                id=proceso.id,
+            )
+            cerrado = cerrar_proceso(proceso, request.user)
+        if cerrado:
+            messages.success(request, 'El proceso de certificación ha finalizado.')
+        return redirect(
+            'certificacion_intera:proceso_detalle',
+            proceso_id=proceso.id,
+        )
+    if not proceso_es_editable(proceso):
+        return redirect(
+            'certificacion_intera:proceso_detalle',
+            proceso_id=proceso.id,
+        )
+    return render(
+        request,
+        'certificacion_intera/proceso_cerrar.html',
+        {
+            'vista_actual': 'procesos',
+            'proceso': proceso,
+        },
+    )
+
+
 def _configuraciones_publicas(proceso):
     """La misma secuencia configurada para la batería; nunca crea otra lista."""
     return list(
         proceso.configuraciones_instrumento.select_related('instrumento').filter(
             estado=ConfiguracionInstrumento.Estado.ACTIVA,
             orden__gt=0,
+        ).exclude(
+            instrumento__clave__in=CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
         ).order_by(
             'orden',
             'id',
@@ -980,11 +1035,6 @@ def aplicacion_publica_proceso_generar_view(request, proceso_id):
             request,
             'Este proceso está cerrado y se encuentra disponible solo para consulta.',
         )
-    elif not _configuraciones_publicas(proceso):
-        messages.error(
-            request,
-            'Configura al menos un instrumento antes de generar la aplicación pública.',
-        )
     else:
         obtener_aplicacion_publica_proceso(proceso, request.user)
         messages.success(
@@ -994,6 +1044,32 @@ def aplicacion_publica_proceso_generar_view(request, proceso_id):
     return redirect(
         f"{reverse('certificacion_intera:proceso_detalle', args=[proceso.id])}?tab=bateria",
     )
+
+
+@acceso_certificacion_intera_requerido
+
+
+def aplicacion_publica_proceso_qr_view(request, proceso_id):
+    proceso = _proceso(proceso_id)
+    publica = get_object_or_404(AplicacionPublica, proceso=proceso)
+    url_publica = request.build_absolute_uri(publica.url_publica)
+    imagen = qrcode.make(
+        url_publica,
+        image_factory=SvgPathImage,
+        box_size=10,
+        border=4,
+    )
+    contenido = BytesIO()
+    imagen.save(contenido)
+    respuesta = HttpResponse(
+        contenido.getvalue(),
+        content_type='image/svg+xml',
+    )
+    if request.GET.get('descargar') == '1':
+        respuesta['Content-Disposition'] = (
+            f'attachment; filename="acceso-intera-{proceso.id}.svg"'
+        )
+    return respuesta
 
 
 @acceso_certificacion_intera_requerido
@@ -1046,14 +1122,17 @@ def aplicacion_publica_proceso_view(request, publica):
         return render(
             request,
             'certificacion_intera/aplicacion_bateria_publica.html',
-            {'pantalla': 'inactiva'},
+            {'pantalla': 'finalizada'},
         )
     configuraciones = _configuraciones_publicas(proceso)
     if not configuraciones:
         return render(
             request,
             'certificacion_intera/aplicacion_bateria_publica.html',
-            {'pantalla': 'inactiva'},
+            {
+                'pantalla': 'sin_instrumentos',
+                'proceso': proceso,
+            },
         )
     clave_sesion = _sesion_publica_clave(publica)
     participante_id = request.session.get(clave_sesion)
@@ -1170,7 +1249,7 @@ def aplicacion_publica_proceso_view(request, publica):
     indice = configuraciones.index(configuracion) + 1
     preguntas = list(configuracion.instrumento.preguntas.all())
     if (
-        'sexo' in campos_contexto_requeridos(configuracion.instrumento.clave)
+        'sexo' in campos_contexto_requeridos(configuracion.instrumento)
         and not participante.sexo
     ):
         form_sexo = SexoBaremoPublicoForm(request.POST or None)
@@ -1372,7 +1451,11 @@ def participante_detalle_view(request, participante_id):
         {
             'vista_actual': 'procesos',
             'participante': participante,
-            'aplicaciones': participante.aplicaciones.select_related('instrumento'),
+            'aplicaciones': participante.aplicaciones.select_related(
+                'instrumento',
+            ).exclude(
+                instrumento__clave__in=CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
+            ),
             'consejerias': participante.consejerias.all(),
             'canalizaciones': participante.canalizaciones.select_related('solicitud_atencion'),
         },
@@ -1507,13 +1590,19 @@ def aplicacion_publica_config_view(request, token):
     proceso = configuracion.proceso
     instrumento = configuracion.instrumento
     hoy = timezone.localdate()
-    campos_contexto = campos_contexto_requeridos(instrumento.clave)
+    campos_contexto = campos_contexto_requeridos(instrumento)
     contexto = {
         'publica': publica,
         'instrumento': instrumento,
         'solicitar_sexo': 'sexo' in campos_contexto,
         'solicitar_fecha_nacimiento': 'fecha_nacimiento' in campos_contexto,
     }
+    if proceso.estado == ProcesoCertificacion.Estado.CERRADO:
+        return render(
+            request,
+            'certificacion_intera/aplicacion_publica.html',
+            {**contexto, 'pantalla': 'finalizada'},
+        )
     if (
         publica.estado != AplicacionPublica.Estado.ACTIVA
         or configuracion.estado != ConfiguracionInstrumento.Estado.ACTIVA
@@ -1714,6 +1803,8 @@ def aplicacion_crear_view(request, participante_id):
     participante = _participante(participante_id)
     configuraciones = participante.proceso.configuraciones_instrumento.select_related(
         'instrumento',
+    ).exclude(
+        instrumento__clave__in=CLAVES_INSTRUMENTOS_DE_FLUJO_INTERNO,
     )
     if request.method == 'POST':
         configuracion = get_object_or_404(
@@ -1772,9 +1863,20 @@ def aplicacion_publica_view(request, token):
         AplicacionInstrumento.objects.select_related(
             'instrumento',
             'participante',
+            'proceso',
         ),
         token=token,
     )
+    if aplicacion.proceso.estado == ProcesoCertificacion.Estado.CERRADO:
+        return render(
+            request,
+            'certificacion_intera/aplicacion_publica.html',
+            {
+                'aplicacion': aplicacion,
+                'instrumento': aplicacion.instrumento,
+                'pantalla': 'finalizada',
+            },
+        )
     if aplicacion.estado != AplicacionInstrumento.Estado.PENDIENTE:
         return render(
             request,
@@ -1787,7 +1889,7 @@ def aplicacion_publica_view(request, token):
         )
     preguntas = list(aplicacion.instrumento.preguntas.all())
     if (
-        'sexo' in campos_contexto_requeridos(aplicacion.instrumento.clave)
+        'sexo' in campos_contexto_requeridos(aplicacion.instrumento)
         and not aplicacion.participante.sexo
     ):
         form_sexo = SexoBaremoPublicoForm(request.POST or None)
@@ -1809,7 +1911,7 @@ def aplicacion_publica_view(request, token):
             },
         )
     if (
-        'fecha_nacimiento' in campos_contexto_requeridos(aplicacion.instrumento.clave)
+        'fecha_nacimiento' in campos_contexto_requeridos(aplicacion.instrumento)
         and not aplicacion.participante.fecha_nacimiento
     ):
         form_fecha = FechaNacimientoPublicoForm(request.POST or None)

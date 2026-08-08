@@ -1,0 +1,32 @@
+{% extends 'certificacion_intera/_base.html' %}
+
+{% block titulo %}
+    Cerrar proceso
+{% endblock %}
+
+{% block contenido %}
+    <section class="intera-card intera-card-pad">
+        <h1>Cerrar proceso</h1>
+
+        <p>
+            ¿Confirmas el cierre de <strong>{{ proceso.nombre }}</strong>?
+            Ya no se recibirán nuevos participantes ni nuevas respuestas.
+            La información histórica, el enlace y el código QR se conservarán.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <button class="intera-btn intera-btn-caution" type="submit">
+                Confirmar cierre
+            </button>
+
+            <a
+                class="intera-btn intera-btn-secondary"
+                href="{% url 'certificacion_intera:proceso_detalle' proceso.id %}"
+            >
+                Cancelar
+            </a>
+        </form>
+    </section>
+{% endblock %}

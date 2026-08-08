@@ -1402,7 +1402,8 @@ class CrearProcesoConBateriaTests(TestCase):
         )
         entrevista = Instrumento.objects.get(clave=CLAVE_ENTREVISTA)
         self.assertTrue(entrevista.activo)
-        self.assertContains(pagina, entrevista.nombre)
+        self.assertEqual(entrevista.preguntas.count(), 24)
+        self.assertNotContains(pagina, entrevista.nombre)
         self.assertContains(pagina, 'Calculadora orientativa')
         respuesta = self.client.post(
             reverse('certificacion_intera:proceso_crear_general'),
@@ -1425,6 +1426,85 @@ class CrearProcesoConBateriaTests(TestCase):
             ),
             [(self.orientativo.id, 1)],
         )
+
+    def test_post_manipulado_no_agrega_entrevista_a_la_bateria(self):
+        entrevista = Instrumento.objects.get(clave=CLAVE_ENTREVISTA)
+        respuesta = self.client.post(
+            reverse('certificacion_intera:proceso_crear_general'),
+            self._datos(
+                instrumentos=[str(entrevista.id)],
+                **{f'orden_{entrevista.id}': '1'},
+            ),
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(
+            respuesta,
+            'Este instrumento no está disponible para esta batería.',
+        )
+        self.assertFalse(ProcesoCertificacion.objects.exists())
+
+    def test_entrevista_preexistente_no_entra_al_flujo_publico_ni_al_expediente(self):
+        proceso = ProcesoCertificacion.objects.create(
+            escuela=self.escuela,
+            nombre='Proceso con configuración histórica',
+            ciclo_escolar='histórico',
+            fecha_inicio=date.today(),
+        )
+        entrevista = Instrumento.objects.get(clave=CLAVE_ENTREVISTA)
+        ConfiguracionInstrumento.objects.bulk_create(
+            [
+                ConfiguracionInstrumento(
+                    proceso=proceso,
+                    instrumento=self.orientativo,
+                    orden=1,
+                ),
+                ConfiguracionInstrumento(
+                    proceso=proceso,
+                    instrumento=entrevista,
+                    orden=2,
+                ),
+            ],
+        )
+        participante = Participante.objects.create(
+            proceso=proceso,
+            nombre='Participante histórico',
+            numero_alumno='H-1',
+        )
+        AplicacionInstrumento.objects.create(
+            proceso=proceso,
+            participante=participante,
+            instrumento=entrevista,
+        )
+        publica = AplicacionPublica.objects.create(proceso=proceso)
+
+        expediente = self.client.get(
+            reverse(
+                'certificacion_intera:participante_detalle',
+                args=[participante.id],
+            ),
+        )
+        self.assertContains(expediente, 'Entrevista 1:1', count=1)
+
+        cliente_publico = Client()
+        respuesta = cliente_publico.post(
+            publica.url_publica,
+            {
+                'nombre': 'Participante público',
+                'numero_alumno': 'PUB-1',
+                'fecha_nacimiento': '2008-01-01',
+                'grupo': 'A',
+            },
+        )
+        self.assertEqual(respuesta.status_code, 302)
+        nuevo = Participante.objects.get(numero_alumno='PUB-1', proceso=proceso)
+        self.assertEqual(
+            list(nuevo.aplicaciones.values_list('instrumento__clave', flat=True)),
+            [self.orientativo.clave],
+        )
+        bateria = cliente_publico.get(publica.url_publica)
+        self.assertContains(bateria, self.orientativo.nombre)
+        self.assertNotContains(bateria, entrevista.nombre)
 
     def test_instrumento_orientativo_y_orden_invalido_no_dejan_proceso_parcial(self):
         datos = self._datos(
@@ -1565,6 +1645,120 @@ class AplicacionPublicaGeneralTests(TestCase):
             AplicacionPublica.objects.filter(proceso=self.proceso).count(),
             1,
         )
+
+    def test_procesos_distintos_tienen_accesos_y_qr_distintos(self):
+        otra_escuela = Escuela.objects.create(
+            nombre='Otra escuela',
+            director='Dirección',
+            cantidad_total_alumnos=10,
+            estado='Estado',
+            municipio='Municipio',
+        )
+        otro_proceso = ProcesoCertificacion.objects.create(
+            escuela=otra_escuela,
+            ciclo_escolar='otro',
+            fecha_inicio=date.today(),
+        )
+        primera = AplicacionPublica.objects.create(proceso=self.proceso)
+        segunda = AplicacionPublica.objects.create(proceso=otro_proceso)
+
+        self.assertNotEqual(primera.token, segunda.token)
+        self.assertNotEqual(primera.url_publica, segunda.url_publica)
+        self.assertNotEqual(
+            reverse(
+                'certificacion_intera:aplicacion_publica_proceso_qr',
+                args=[self.proceso.id],
+            ),
+            reverse(
+                'certificacion_intera:aplicacion_publica_proceso_qr',
+                args=[otro_proceso.id],
+            ),
+        )
+
+    @patch('apps.certificacion_intera.views.qrcode.make')
+    def test_enlace_mostrado_y_qr_reciben_exactamente_la_misma_url(self, crear_qr):
+        class ImagenFalsa:
+            def save(self, destino):
+                destino.write(b'<svg></svg>')
+
+        crear_qr.return_value = ImagenFalsa()
+        publica = AplicacionPublica.objects.create(proceso=self.proceso)
+        detalle = self.client.get(
+            reverse('certificacion_intera:proceso_detalle', args=[self.proceso.id]),
+            {'tab': 'bateria'},
+        )
+        url_absoluta = f'http://testserver{publica.url_publica}'
+        self.assertContains(detalle, url_absoluta, count=2)
+
+        respuesta_qr = self.client.get(
+            reverse(
+                'certificacion_intera:aplicacion_publica_proceso_qr',
+                args=[self.proceso.id],
+            ),
+        )
+
+        self.assertEqual(respuesta_qr.status_code, 200)
+        self.assertEqual(crear_qr.call_args.args[0], url_absoluta)
+
+    def test_qr_no_tiene_token_separado_y_cambiar_bateria_no_cambia_acceso(self):
+        publica = AplicacionPublica.objects.create(proceso=self.proceso)
+        token = publica.token
+        campos = {campo.name for campo in AplicacionPublica._meta.get_fields()}
+        self.assertNotIn('token_qr', campos)
+        self.assertNotIn('qr_token', campos)
+
+        self.proceso.configuraciones_instrumento.all().delete()
+        nuevo = Instrumento.objects.create(nombre='Instrumento nuevo', clave='nuevo-qr')
+        ConfiguracionInstrumento.objects.create(
+            proceso=self.proceso,
+            instrumento=nuevo,
+            orden=1,
+        )
+        publica.refresh_from_db()
+
+        self.assertEqual(publica.token, token)
+
+    def test_proceso_sin_instrumentos_conserva_acceso_y_muestra_mensaje(self):
+        self.proceso.configuraciones_instrumento.all().delete()
+        generar = reverse(
+            'certificacion_intera:aplicacion_publica_proceso_generar',
+            args=[self.proceso.id],
+        )
+        self.assertEqual(self.client.post(generar).status_code, 302)
+        publica = AplicacionPublica.objects.get(proceso=self.proceso)
+        self.client.logout()
+
+        respuesta = self.client.get(publica.url_publica)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(
+            respuesta,
+            'Este proceso aún no tiene instrumentos disponibles.',
+        )
+
+    def test_participantes_del_mismo_acceso_no_mezclan_aplicaciones(self):
+        publica = AplicacionPublica.objects.create(proceso=self.proceso)
+        url = publica.url_publica
+        primero = Client()
+        segundo = Client()
+        datos_base = {
+            'fecha_nacimiento': '2008-01-01',
+            'grupo': 'A',
+        }
+        primero.post(
+            url,
+            {**datos_base, 'nombre': 'Participante uno', 'numero_alumno': 'UNO'},
+        )
+        segundo.post(
+            url,
+            {**datos_base, 'nombre': 'Participante dos', 'numero_alumno': 'DOS'},
+        )
+
+        participantes = Participante.objects.filter(proceso=self.proceso)
+        self.assertEqual(participantes.count(), 2)
+        aplicaciones = AplicacionInstrumento.objects.filter(aplicacion_publica=publica)
+        self.assertEqual(aplicaciones.count(), 2)
+        self.assertEqual(aplicaciones.values('participante_id').distinct().count(), 2)
 
     def test_enlace_general_inicia_con_datos_y_reutiliza_participante(self):
         publica, _ = AplicacionPublica.objects.get_or_create(proceso=self.proceso)
@@ -1813,3 +2007,186 @@ class AplicacionPublicaGeneralTests(TestCase):
             respuesta,
             ADVERTENCIA_RESULTADO_ORIENTATIVO,
         )
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    },
+)
+class CierreProcesoTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username='cierre-proceso',
+            password='secreto',
+        )
+        self.usuario.groups.add(
+            Group.objects.get_or_create(name='Certificación')[0],
+        )
+        self.client.force_login(self.usuario)
+        escuela = Escuela.objects.create(
+            nombre='Escuela cierre',
+            director='Dirección',
+            cantidad_total_alumnos=10,
+            estado='Estado',
+            municipio='Municipio',
+        )
+        self.proceso = ProcesoCertificacion.objects.create(
+            escuela=escuela,
+            ciclo_escolar='cierre',
+            fecha_inicio=date.today(),
+        )
+        self.instrumento = Instrumento.objects.create(
+            nombre='Instrumento cierre',
+            clave='instrumento-cierre',
+        )
+        self.pregunta = PreguntaInstrumento.objects.create(
+            instrumento=self.instrumento,
+            orden=1,
+            texto='Pregunta cierre',
+            opciones=[{'valor': 'si', 'etiqueta': 'Sí'}],
+        )
+        ConfiguracionInstrumento.objects.create(
+            proceso=self.proceso,
+            instrumento=self.instrumento,
+            orden=1,
+        )
+        self.participante = Participante.objects.create(
+            proceso=self.proceso,
+            nombre='Participante histórico',
+            numero_alumno='CIERRE-1',
+        )
+        self.aplicacion = AplicacionInstrumento.objects.create(
+            proceso=self.proceso,
+            participante=self.participante,
+            instrumento=self.instrumento,
+            estado=AplicacionInstrumento.Estado.RESPONDIDA,
+        )
+        RespuestaInstrumento.objects.create(
+            aplicacion=self.aplicacion,
+            pregunta=self.pregunta,
+            valor='si',
+        )
+        ResultadoInstrumento.objects.create(
+            aplicacion=self.aplicacion,
+            estado=ResultadoInstrumento.Estado.EVALUADO,
+        )
+        self.publica = AplicacionPublica.objects.create(proceso=self.proceso)
+        self.url_detalle = reverse(
+            'certificacion_intera:proceso_detalle',
+            args=[self.proceso.id],
+        )
+        self.url_cierre = reverse(
+            'certificacion_intera:proceso_cerrar',
+            args=[self.proceso.id],
+        )
+
+    def test_abierto_muestra_accion_y_get_solo_confirma(self):
+        detalle = self.client.get(self.url_detalle)
+        self.assertContains(detalle, 'Cerrar proceso')
+
+        confirmacion = self.client.get(self.url_cierre)
+        self.proceso.refresh_from_db()
+        self.assertEqual(confirmacion.status_code, 200)
+        self.assertContains(confirmacion, 'Ya no se recibirán nuevos participantes')
+        self.assertContains(confirmacion, 'csrfmiddlewaretoken')
+        self.assertNotEqual(self.proceso.estado, ProcesoCertificacion.Estado.CERRADO)
+
+    def test_cierre_requiere_csrf(self):
+        cliente = Client(enforce_csrf_checks=True)
+        cliente.force_login(self.usuario)
+
+        respuesta = cliente.post(self.url_cierre)
+
+        self.assertEqual(respuesta.status_code, 403)
+        self.proceso.refresh_from_db()
+        self.assertNotEqual(self.proceso.estado, ProcesoCertificacion.Estado.CERRADO)
+
+    def test_cierre_registra_bitacora_conserva_historial_y_oculta_accion(self):
+        totales = {
+            'participantes': self.proceso.participantes.count(),
+            'aplicaciones': self.proceso.aplicaciones.count(),
+            'respuestas': RespuestaInstrumento.objects.filter(
+                aplicacion__proceso=self.proceso,
+            ).count(),
+            'resultados': ResultadoInstrumento.objects.filter(
+                aplicacion__proceso=self.proceso,
+            ).count(),
+        }
+
+        respuesta = self.client.post(self.url_cierre)
+        self.proceso.refresh_from_db()
+
+        self.assertEqual(respuesta.status_code, 302)
+        self.assertEqual(self.proceso.estado, ProcesoCertificacion.Estado.CERRADO)
+        self.assertEqual(self.proceso.fecha_cierre, date.today())
+        evento = BitacoraProceso.objects.get(
+            proceso=self.proceso,
+            evento='Cierre de proceso',
+        )
+        self.assertEqual(evento.usuario, self.usuario)
+        self.assertIsNotNone(evento.creado_en)
+        self.assertEqual(self.proceso.participantes.count(), totales['participantes'])
+        self.assertEqual(self.proceso.aplicaciones.count(), totales['aplicaciones'])
+        self.assertEqual(
+            RespuestaInstrumento.objects.filter(aplicacion__proceso=self.proceso).count(),
+            totales['respuestas'],
+        )
+        self.assertEqual(
+            ResultadoInstrumento.objects.filter(aplicacion__proceso=self.proceso).count(),
+            totales['resultados'],
+        )
+        detalle = self.client.get(self.url_detalle)
+        self.assertContains(detalle, 'Finalizado')
+        self.assertNotContains(detalle, 'Cerrar proceso')
+        resultado = self.client.get(
+            reverse('certificacion_intera:resultado', args=[self.aplicacion.id]),
+        )
+        self.assertEqual(resultado.status_code, 200)
+
+    def test_cerrado_bloquea_altas_y_respuestas_pero_conserva_url_y_qr(self):
+        pendiente = AplicacionInstrumento.objects.create(
+            proceso=self.proceso,
+            participante=self.participante,
+            instrumento=self.instrumento,
+        )
+        self.client.post(self.url_cierre)
+        participantes_antes = self.proceso.participantes.count()
+        respuestas_antes = RespuestaInstrumento.objects.count()
+
+        publico = Client()
+        general = publico.post(
+            self.publica.url_publica,
+            {
+                'nombre': 'Participante nuevo',
+                'numero_alumno': 'NUEVO',
+                'fecha_nacimiento': '2008-01-01',
+            },
+        )
+        individual = publico.post(
+            reverse(
+                'certificacion_intera:aplicacion_individual',
+                args=[pendiente.token],
+            ),
+            {f'pregunta_{self.pregunta.id}': 'si'},
+        )
+
+        mensaje = 'Este proceso de certificación ha finalizado y ya no recibe respuestas.'
+        self.assertEqual(general.status_code, 200)
+        self.assertContains(general, mensaje)
+        self.assertEqual(individual.status_code, 200)
+        self.assertContains(individual, mensaje)
+        self.assertEqual(self.proceso.participantes.count(), participantes_antes)
+        self.assertEqual(RespuestaInstrumento.objects.count(), respuestas_antes)
+        qr = self.client.get(
+            reverse(
+                'certificacion_intera:aplicacion_publica_proceso_qr',
+                args=[self.proceso.id],
+            ),
+        )
+        self.assertEqual(qr.status_code, 200)
+        self.publica.refresh_from_db()
+        self.assertIsNotNone(self.publica.token)

@@ -77,6 +77,11 @@ urlpatterns = [
         name='proceso_detalle',
     ),
     path(
+        'procesos/<int:proceso_id>/cerrar/',
+        views.proceso_cerrar_view,
+        name='proceso_cerrar',
+    ),
+    path(
         'procesos/<int:proceso_id>/bitacora/',
         views_extra.proceso_bitacora_view,
         name='proceso_bitacora',
@@ -105,6 +110,11 @@ urlpatterns = [
         'procesos/<int:proceso_id>/aplicacion-publica/estado/',
         views.aplicacion_publica_proceso_estado_view,
         name='aplicacion_publica_proceso_estado',
+    ),
+    path(
+        'procesos/<int:proceso_id>/aplicacion-publica/codigo-qr.svg',
+        views.aplicacion_publica_proceso_qr_view,
+        name='aplicacion_publica_proceso_qr',
     ),
     path(
         'participantes/<int:participante_id>/',

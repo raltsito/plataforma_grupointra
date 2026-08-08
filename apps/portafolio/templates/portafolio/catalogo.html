@@ -11,6 +11,25 @@
         {% endfor %}
     {% endif %}
 
+    {% if es_instrumento %}
+        <section class="card form importacion-instrumento">
+            <h2>Subir archivo</h2>
+            <p>Sube un Excel estructurado para crear el documento origen, el instrumento, sus preguntas y su calculadora.</p>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="importar">
+                <label>{{ formulario_importacion.archivo.label }}{{ formulario_importacion.archivo }}</label>
+                {% for error in formulario_importacion.archivo.errors %}
+                    <small class="error">{{ error }}</small>
+                {% endfor %}
+                {% if formulario_importacion.archivo.help_text %}
+                    <small>{{ formulario_importacion.archivo.help_text }}</small>
+                {% endif %}
+                <button type="submit">Subir archivo e importar instrumento</button>
+            </form>
+        </section>
+    {% endif %}
+
     <section class="card form">
         <h2>Nuevo registro</h2>
 
@@ -61,24 +80,18 @@
                             </td>
                         {% endif %}
 
-                        {% if es_instrumento and item.documento_origen %}
-                            <td>
-                                <form
-                                    method="post"
-                                    action="{% url 'portafolio:importar_preguntas' item.id %}"
-                                >
-                                    {% csrf_token %}
-                                    <button type="submit">
-                                        Importar preguntas del Excel
-                                    </button>
-                                </form>
-                            </td>
-                        {% endif %}
-
                         {% if item.archivo %}
                             <td>
                                 <a href="{{ item.archivo.url }}">
                                     Descargar
+                                </a>
+                            </td>
+                        {% endif %}
+
+                        {% if es_instrumento %}
+                            <td>
+                                <a href="{% url 'portafolio:eliminar' 'instrumento' item.id %}">
+                                    Eliminar instrumento
                                 </a>
                             </td>
                         {% endif %}

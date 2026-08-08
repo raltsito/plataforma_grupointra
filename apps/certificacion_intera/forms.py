@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.portafolio.models import Instrumento
+from .instrumentos import excluir_instrumentos_de_flujo_interno
 
 from .models import (
     Canalizacion,
@@ -248,6 +249,12 @@ class FechaNacimientoPublicoForm(forms.Form):
 
 
 class ConfiguracionInstrumentoForm(BaseInteraForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['instrumento'].queryset = excluir_instrumentos_de_flujo_interno(
+            Instrumento.objects.filter(activo=True),
+        )
+
     class Meta:
         model = ConfiguracionInstrumento
 

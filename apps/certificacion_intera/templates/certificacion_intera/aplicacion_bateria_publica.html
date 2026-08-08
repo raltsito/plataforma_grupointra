@@ -89,6 +89,20 @@
                 Esta aplicación ya no se encuentra disponible.
             </h1>
 
+        {% elif pantalla == 'finalizada' %}
+            <h1>
+                Este proceso de certificación ha finalizado y ya no recibe respuestas.
+            </h1>
+
+        {% elif pantalla == 'sin_instrumentos' %}
+            <h1>
+                Este proceso aún no tiene instrumentos disponibles.
+            </h1>
+
+            <p class="context">
+                {{ proceso.escuela.nombre }} · {{ proceso.nombre }}
+            </p>
+
         {% elif pantalla == 'gracias' %}
             <h1>
                 Gracias. Tus respuestas fueron guardadas correctamente.

@@ -45,6 +45,21 @@ class InstrumentoForm(forms.ModelForm):
         )
 
 
+class ImportarInstrumentoForm(forms.Form):
+    archivo = forms.FileField(
+        label='Archivo Excel',
+        help_text='Selecciona un archivo .xlsx con la estructura de Portafolio.',
+    )
+
+    def clean_archivo(self):
+        archivo = self.cleaned_data['archivo']
+        if not archivo.name.lower().endswith('.xlsx'):
+            raise forms.ValidationError(
+                'Selecciona un archivo Excel válido con extensión .xlsx.'
+            )
+        return archivo
+
+
 class PreguntaInstrumentoForm(forms.ModelForm):
     class Meta:
         model = PreguntaInstrumento

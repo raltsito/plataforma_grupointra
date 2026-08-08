@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -86,6 +87,8 @@ INSTALLED_APPS = [
 
     # Módulo de Certificación INTERA: proceso de certificación escolar.
     'apps.certificacion_intera',
+
+    'storages',
 
     'django.contrib.admin',
     'django.contrib.auth',
@@ -233,13 +236,50 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+S3_VARIABLES = {
+    nombre: os.environ.get(nombre, '').strip()
+    for nombre in (
+        'BUCKET',
+        'ACCESS_KEY_ID',
+        'SECRET_ACCESS_KEY',
+        'REGION',
+        'ENDPOINT',
+    )
+}
+S3_STORAGE_CONFIGURED = all(S3_VARIABLES.values())
+
+if any(S3_VARIABLES.values()) and not S3_STORAGE_CONFIGURED:
+    faltantes_s3 = ', '.join(
+        nombre
+        for nombre, valor in S3_VARIABLES.items()
+        if not valor
+    )
+    raise ImproperlyConfigured(
+        f'Configuración S3 incompleta. Faltan: {faltantes_s3}.',
+    )
+
+DEFAULT_STORAGE = (
+    {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': S3_VARIABLES['BUCKET'],
+            'access_key': S3_VARIABLES['ACCESS_KEY_ID'],
+            'secret_key': S3_VARIABLES['SECRET_ACCESS_KEY'],
+            'region_name': S3_VARIABLES['REGION'],
+            'endpoint_url': S3_VARIABLES['ENDPOINT'],
+            'default_acl': None,
+            'file_overwrite': False,
+            'querystring_auth': True,
+        },
+    }
+    if S3_STORAGE_CONFIGURED
+    else {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    }
+)
+
 STORAGES = {
-    'default': {
-        'BACKEND': (
-            'django.core.files.storage.'
-            'FileSystemStorage'
-        ),
-    },
+    'default': DEFAULT_STORAGE,
     'staticfiles': {
         'BACKEND': (
             'whitenoise.storage.'

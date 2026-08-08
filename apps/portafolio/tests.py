@@ -15,8 +15,11 @@ from openpyxl import Workbook
 
 from .models import (
     CalculadoraInstrumento,
+    CategoriaDocumento,
     Documento,
+    ImportacionInstrumento,
     Instrumento,
+    PreguntaInstrumento,
     RevisionInstrumento,
 )
 from .services_entrevista import (
@@ -31,6 +34,7 @@ from .services_calificacion import (
     ADVERTENCIA_CORTA_RESULTADO_ORIENTATIVO,
     ADVERTENCIA_RESULTADO_ORIENTATIVO,
     calcular_resultado,
+    campos_contexto_requeridos,
     edad_cumplida,
     obtener_revision_calculadora,
     validar_variante_por_edad,
@@ -143,6 +147,357 @@ class ImportacionInstrumentosTests(TestCase):
             preguntas[1].tipo_respuesta,
             'texto_libre',
         )
+
+
+@override_settings(
+    STORAGES={
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+)
+class ImportacionInstrumentoWebTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username='importador',
+            password='secreto',
+        )
+        grupo, _ = Group.objects.get_or_create(name='Certificación')
+        self.usuario.groups.add(grupo)
+        self.client.force_login(self.usuario)
+        self.documentos_iniciales = Documento.objects.count()
+        self.instrumentos_iniciales = Instrumento.objects.count()
+
+    def _excel_estructurado(self):
+        libro = Workbook()
+        instrumento = libro.active
+        instrumento.title = 'INSTRUMENTO'
+        instrumento.append(['Campo', 'Valor'])
+        instrumento.append(['Población objetivo', 'Adolescentes'])
+        instrumento.append(['Instrucciones', None])
+        instrumento.append(['Lee cada frase y elige la respuesta más adecuada.', None])
+
+        preguntas = libro.create_sheet('PREGUNTAS')
+        preguntas.append([
+            'instrumento_clave', 'instrumento_nombre', 'variante',
+            'version', 'poblacion', 'edad_min', 'edad_max', 'orden',
+            'pregunta_clave', 'texto', 'tipo_respuesta', 'opciones_json',
+            'requerida', 'visibilidad',
+        ])
+        preguntas.append([
+            'instrumento-web', 'Instrumento web', 'Adolescentes', '1.0',
+            'Adolescentes', 14, 20, 1, 'P-01', 'Primera pregunta',
+            'si_no', '[{"valor":"si","etiqueta":"Sí"},{"valor":"no","etiqueta":"No"}]',
+            True, None,
+        ])
+        preguntas.append([
+            'instrumento-web', 'Instrumento web', 'Adolescentes', '1.0',
+            'Adolescentes', 14, 20, 2, 'P-02', 'Explica tu respuesta',
+            'texto_libre', None, False,
+            '{"pregunta_clave":"P-01","operador":"igual","valor":"si"}',
+        ])
+
+        calculadora = libro.create_sheet('CALCULADORA_SISTEMA')
+        calculadora.append(['Campo', 'Valor'])
+        calculadora.append(['clave_calculadora', 'calc-instrumento-web-v1'])
+        calculadora.append(['version_regla', '1.0'])
+        calculadora.append(['estado_calculadora', 'ORIENTATIVA'])
+        calculadora.append(['requiere_respuestas_completas', True])
+
+        casos = libro.create_sheet('CASOS_PRUEBA')
+        casos.append(['Caso'])
+
+        contenido = BytesIO()
+        libro.save(contenido)
+        return SimpleUploadedFile(
+            'instrumento-web.xlsx',
+            contenido.getvalue(),
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'
+            ),
+        )
+
+    def test_importa_desde_instrumentos_toda_la_estructura(self):
+        respuesta = self.client.post(
+            reverse('portafolio:instrumentos'),
+            {'accion': 'importar', 'archivo': self._excel_estructurado()},
+        )
+
+        self.assertRedirects(respuesta, reverse('portafolio:instrumentos'))
+        instrumento = Instrumento.objects.get(clave='instrumento-web')
+        self.assertTrue(instrumento.activo)
+        self.assertEqual(instrumento.preguntas.count(), 2)
+        self.assertIn('Lee cada frase', instrumento.instrucciones)
+        self.assertEqual(instrumento.documento_origen.nombre, 'instrumento-web')
+        self.assertEqual(instrumento.documento_origen.cargado_por, self.usuario)
+        self.assertTrue(
+            instrumento.documento_origen.archivo.storage.exists(
+                instrumento.documento_origen.archivo.name,
+            ),
+        )
+        self.assertEqual(
+            instrumento.importacion.metadatos['campos_contexto_requeridos'],
+            ['fecha_nacimiento'],
+        )
+        self.assertEqual(
+            campos_contexto_requeridos(instrumento),
+            {'fecha_nacimiento'},
+        )
+        self.assertEqual(
+            CalculadoraInstrumento.objects.get(
+                instrumento=instrumento,
+            ).estado,
+            CalculadoraInstrumento.Estado.ORIENTATIVA,
+        )
+        pregunta = PreguntaInstrumento.objects.get(instrumento=instrumento, clave='P-02')
+        self.assertFalse(pregunta.requerida)
+        self.assertEqual(pregunta.condicion_visibilidad['pregunta_clave'], 'P-01')
+        from apps.certificacion_intera.views import _instrumentos_para_bateria
+        _, seleccionables = _instrumentos_para_bateria()
+        self.assertIn(instrumento, seleccionables)
+
+    def test_reimportar_el_mismo_archivo_no_duplica_registros(self):
+        for _ in range(2):
+            self.client.post(
+                reverse('portafolio:instrumentos'),
+                {'accion': 'importar', 'archivo': self._excel_estructurado()},
+            )
+
+        instrumento = Instrumento.objects.get(clave='instrumento-web')
+        self.assertEqual(Documento.objects.filter(nombre='instrumento-web').count(), 1)
+        self.assertEqual(Instrumento.objects.filter(clave='instrumento-web').count(), 1)
+        self.assertEqual(ImportacionInstrumento.objects.filter(instrumento=instrumento).count(), 1)
+        self.assertEqual(PreguntaInstrumento.objects.filter(instrumento=instrumento).count(), 2)
+        self.assertEqual(CalculadoraInstrumento.objects.filter(instrumento=instrumento).count(), 1)
+
+    def test_excel_invalido_muestra_error_y_no_crea_registros(self):
+        archivo = SimpleUploadedFile(
+            'invalido.xlsx',
+            b'no es un libro de Excel',
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        respuesta = self.client.post(
+            reverse('portafolio:instrumentos'),
+            {'accion': 'importar', 'archivo': archivo},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'no fue posible leer el archivo')
+        self.assertEqual(Documento.objects.count(), self.documentos_iniciales)
+        self.assertEqual(Instrumento.objects.count(), self.instrumentos_iniciales)
+
+    def test_conserva_el_alta_manual_de_instrumentos(self):
+        respuesta = self.client.post(
+            reverse('portafolio:instrumentos'),
+            {
+                'nombre': 'Instrumento manual',
+                'clave': 'instrumento-manual',
+                'activo': 'on',
+            },
+        )
+
+        self.assertRedirects(respuesta, reverse('portafolio:instrumentos'))
+        self.assertTrue(
+            Instrumento.objects.filter(
+                clave='instrumento-manual',
+                activo=True,
+            ).exists()
+        )
+
+    def test_catalogo_solo_presenta_el_importador_estructurado(self):
+        respuesta = self.client.get(reverse('portafolio:instrumentos'))
+
+        self.assertContains(respuesta, 'Subir archivo')
+        self.assertContains(respuesta, 'Subir archivo e importar instrumento')
+        self.assertNotContains(respuesta, 'Importar preguntas del Excel')
+        self.assertNotContains(
+            respuesta,
+            reverse('portafolio:importar_preguntas', args=[1]),
+        )
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DescargaDocumentosTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(
+            username='descarga-documentos',
+            password='secreto',
+        )
+        self.usuario.groups.add(
+            Group.objects.get_or_create(name='Certificación')[0],
+        )
+        self.client.force_login(self.usuario)
+
+    def test_descarga_protegida_usa_storage_y_nombre_original(self):
+        documento = Documento.objects.create(
+            nombre='Documento descargable',
+            archivo=SimpleUploadedFile('reporte seguro.xlsx', b'contenido'),
+        )
+
+        respuesta = self.client.get(
+            reverse('portafolio:documento_descargar', args=[documento.id]),
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('attachment;', respuesta['Content-Disposition'])
+        self.assertIn('reporte_seguro', respuesta['Content-Disposition'])
+        self.assertNotIn('/media/', respuesta['Content-Disposition'])
+        respuesta.close()
+        documento.archivo.delete(save=False)
+
+    def test_archivo_faltante_devuelve_404_controlado(self):
+        documento = Documento.objects.create(
+            nombre='Documento perdido',
+            archivo=SimpleUploadedFile('perdido.xlsx', b'contenido'),
+        )
+        documento.archivo.storage.delete(documento.archivo.name)
+
+        respuesta = self.client.get(
+            reverse('portafolio:documento_descargar', args=[documento.id]),
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertContains(
+            respuesta,
+            'se encuentra actualmente en el almacenamiento configurado',
+            status_code=404,
+        )
+
+    def test_documentos_enlaza_la_vista_protegida_y_no_media_url(self):
+        documento = Documento.objects.create(
+            nombre='Documento listado',
+            archivo=SimpleUploadedFile('listado.xlsx', b'contenido'),
+        )
+
+        respuesta = self.client.get(reverse('portafolio:documentos'))
+
+        self.assertContains(
+            respuesta,
+            reverse('portafolio:documento_descargar', args=[documento.id]),
+        )
+        self.assertNotContains(respuesta, documento.archivo.url)
+        documento.archivo.delete(save=False)
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class EliminacionPortafolioTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(username='eliminador', password='secreto')
+        self.usuario.groups.add(Group.objects.get_or_create(name='Certificación')[0])
+        self.client.force_login(self.usuario)
+        self.categoria = CategoriaDocumento.objects.get_or_create(nombre='Instrumento')[0]
+
+    def _documento(self, nombre='Documento temporal'):
+        return Documento.objects.create(
+            nombre=nombre,
+            categoria=self.categoria,
+            archivo=SimpleUploadedFile('temporal.xlsx', b'contenido'),
+        )
+
+    def test_documento_huerfano_se_elimina_solo_por_post(self):
+        documento = self._documento()
+        almacenamiento = documento.archivo.storage
+        nombre_archivo = documento.archivo.name
+        url = reverse('portafolio:eliminar', args=['documento', documento.id])
+
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertTrue(Documento.objects.filter(pk=documento.pk).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            respuesta = self.client.post(url)
+
+        self.assertRedirects(respuesta, reverse('portafolio:documentos'))
+        self.assertFalse(Documento.objects.filter(pk=documento.pk).exists())
+        self.assertFalse(almacenamiento.exists(nombre_archivo))
+
+    def test_documento_usado_se_protege_sin_error_servidor(self):
+        documento = self._documento()
+        Instrumento.objects.create(
+            nombre='Instrumento protegido',
+            clave='instrumento-protegido',
+            documento_origen=documento,
+        )
+        url = reverse('portafolio:eliminar', args=['documento', documento.id])
+
+        respuesta = self.client.post(url, follow=True)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'no puede eliminarse')
+        self.assertTrue(Documento.objects.filter(pk=documento.pk).exists())
+
+    def test_instrumento_sin_historial_se_elimina_con_sus_dependencias(self):
+        documento = self._documento('Origen importado')
+        instrumento = Instrumento.objects.create(
+            nombre='Instrumento temporal',
+            clave='instrumento-temporal',
+            documento_origen=documento,
+        )
+        ImportacionInstrumento.objects.create(
+            instrumento=instrumento,
+            documento=documento,
+            huella_contenido='a' * 64,
+        )
+        PreguntaInstrumento.objects.create(instrumento=instrumento, orden=1, texto='Pregunta')
+        RevisionInstrumento.objects.create(instrumento=instrumento, version='1.0', estructura={})
+        CalculadoraInstrumento.objects.create(
+            instrumento=instrumento,
+            clave='calc-temporal',
+            version_regla='1.0',
+            estado=CalculadoraInstrumento.Estado.ACTIVA,
+            huella_contenido='b' * 64,
+        )
+
+        respuesta = self.client.post(
+            reverse('portafolio:eliminar', args=['instrumento', instrumento.id]),
+        )
+
+        self.assertRedirects(respuesta, reverse('portafolio:instrumentos'))
+        self.assertFalse(Instrumento.objects.filter(pk=instrumento.pk).exists())
+        self.assertFalse(Documento.objects.filter(pk=documento.pk).exists())
+
+    def test_instrumento_configurado_en_intera_no_se_elimina(self):
+        from apps.certificacion_intera.models import (
+            ConfiguracionInstrumento,
+            Escuela,
+            ProcesoCertificacion,
+        )
+
+        instrumento = Instrumento.objects.create(
+            nombre='Instrumento con historial',
+            clave='instrumento-con-historial',
+        )
+        escuela = Escuela.objects.create(
+            nombre='Escuela', director='Dirección', cantidad_total_alumnos=1,
+            estado='Estado', municipio='Municipio',
+        )
+        proceso = ProcesoCertificacion.objects.create(
+            escuela=escuela,
+            ciclo_escolar='2026-2027',
+            fecha_inicio=date.today(),
+        )
+        ConfiguracionInstrumento.objects.create(proceso=proceso, instrumento=instrumento)
+
+        respuesta = self.client.post(
+            reverse('portafolio:eliminar', args=['instrumento', instrumento.id]),
+            follow=True,
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'no puede eliminarse')
+        self.assertTrue(Instrumento.objects.filter(pk=instrumento.pk).exists())
 
 
 class PlantillaEntrevistaUnoAUnoTests(TestCase):

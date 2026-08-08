@@ -1,0 +1,20 @@
+{% extends 'portafolio/_base.html' %}
+
+{% block titulo %}
+    Archivo no disponible
+{% endblock %}
+
+{% block contenido %}
+    <section class="card">
+        <h1>Archivo no disponible</h1>
+
+        <p>
+            El registro de “{{ documento.nombre }}” existe, pero el archivo no
+            se encuentra actualmente en el almacenamiento configurado.
+        </p>
+
+        <a href="{% url 'portafolio:documentos' %}">
+            Volver a Documentos
+        </a>
+    </section>
+{% endblock %}

@@ -1146,3 +1146,33 @@ body {
         white-space: nowrap;
     }
 }
+
+.aplicacion-publica__qr {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.aplicacion-publica__qr h3 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.aplicacion-publica__qr img {
+    width: 220px;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #e6eaf2;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.intera-tabs .intera-tab-action {
+    margin-left: auto;
+    border: 1px solid #b4413b;
+    border-radius: 7px;
+    color: #9d342f;
+    font-weight: 700;
+}

@@ -5,6 +5,12 @@
 {% endblock %}
 
 {% block contenido %}
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if message.tags == 'error' %}error{% endif %}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+
     <section class="card form">
         <h2>Registrar documento</h2>
 
@@ -80,8 +86,11 @@
                         </td>
 
                         <td>
-                            <a href="{{ item.archivo.url }}">
+                            <a href="{% url 'portafolio:documento_descargar' item.id %}">
                                 Descargar
+                            </a>
+                            <a href="{% url 'portafolio:eliminar' 'documento' item.id %}">
+                                Eliminar
                             </a>
                         </td>
                     </tr>

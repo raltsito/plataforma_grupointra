@@ -8,7 +8,7 @@ demografico. El modulo consumidor decide como persistir el resultado.
 from datetime import date
 from decimal import Decimal
 
-from .models import CalculadoraInstrumento
+from .models import CalculadoraInstrumento, Instrumento
 
 
 ADVERTENCIA_RESULTADO_ORIENTATIVO = (
@@ -86,7 +86,29 @@ def clave_calculadora(clave):
     )
 
 
-def campos_contexto_requeridos(clave):
+def campos_contexto_requeridos(instrumento_o_clave):
+    """Obtiene el contexto declarado en la importación del instrumento.
+
+    La clave conserva el comportamiento heredado para instrumentos anteriores
+    a la importación estructurada; los consumidores actuales entregan el
+    instrumento para no decidir requisitos por nombre.
+    """
+    if hasattr(instrumento_o_clave, 'clave'):
+        try:
+            metadatos = instrumento_o_clave.importacion.metadatos or {}
+        except Instrumento.importacion.RelatedObjectDoesNotExist:
+            metadatos = {}
+        campos = metadatos.get('campos_contexto_requeridos') or []
+        campos = {
+            campo
+            for campo in campos
+            if campo in {'sexo', 'fecha_nacimiento', 'edad'}
+        }
+        if campos:
+            return campos
+        clave = instrumento_o_clave.clave
+    else:
+        clave = instrumento_o_clave
     return _CONTEXTOS_REQUERIDOS.get(
         clave_calculadora(clave),
         set(),
