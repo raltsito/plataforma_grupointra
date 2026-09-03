@@ -49,7 +49,7 @@
         <td>
           <div class="titulo">Nómina Academia</div>
           <div class="subtitulo">
-            {{ nomina.maestro.nombre }} · periodo {{ nomina.periodo_mes }}/{{ nomina.periodo_anio }}<br>
+            {{ nomina.maestro.nombre }} ({{ nomina.maestro.get_tipo_display }}) · periodo {{ nomina.periodo_mes }}/{{ nomina.periodo_anio }}<br>
             Fecha de pago: {% if nomina.fecha_pago %}{{ nomina.fecha_pago|date:'d/m/Y' }}{% else %}por definir{% endif %}
             {% if nomina.usuario_genera %} · Generó: {{ nomina.usuario_genera.get_full_name|default:nomina.usuario_genera.username }}{% endif %}
           </div>
@@ -67,7 +67,7 @@
   <table class="fin-pdf-tabla">
     <thead>
       <tr>
-        <th>Docente</th>
+        <th>Persona</th>
         <th>Concepto</th>
         <th class="num">Cantidad</th>
         <th class="num">Tarifa</th>
@@ -79,7 +79,7 @@
     <tbody>
       {% for c in conceptos %}
       <tr>
-        <td>{{ nomina.maestro.nombre }}</td>
+        <td>{{ nomina.maestro.nombre }}<br><span style="font-size:7.5pt;color:#777;">{{ nomina.maestro.get_tipo_display }}</span></td>
         <td>{{ c.get_concepto_display }}{% if c.descripcion %} · {{ c.descripcion }}{% endif %}</td>
         <td class="num">{{ c.cantidad }}</td>
         <td class="num">{{ c.tarifa|dinero }}</td>

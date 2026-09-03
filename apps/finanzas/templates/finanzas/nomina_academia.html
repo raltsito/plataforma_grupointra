@@ -3,7 +3,7 @@
 
 {% block titulo %}Nómina Academia{% endblock %}
 {% block acciones_header %}
-<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-maestro').showModal()">Agregar maestro</button>
+<button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-maestro').showModal()">Agregar persona</button>
 <button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-tabulador-academia').showModal()">Registrar tabulador</button>
 <button type="button" class="fin-btn-primary fin-btn-activo" onclick="document.getElementById('dialog-nomina-academia').showModal()">Capturar nómina</button>
 {% endblock %}
@@ -20,13 +20,14 @@
 
   <div class="fin-card fin-table-card">
     <div class="fin-table-toolbar">
-      <div class="fin-card-title">Maestros dados de alta</div>
+      <div class="fin-card-title">Personas de Academia</div>
     </div>
     <div class="fin-table-wrap">
       <table class="fin-table">
         <thead>
           <tr>
             <th>Nombre</th>
+            <th>Tipo</th>
             <th>Estatus</th>
           </tr>
         </thead>
@@ -34,10 +35,11 @@
           {% for m in maestros %}
           <tr>
             <td>{{ m.nombre }}</td>
+            <td>{{ m.get_tipo_display }}</td>
             <td><span class="fin-badge {% if m.activo %}fin-badge-pagado{% else %}fin-badge-cancelado{% endif %}">{% if m.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
           </tr>
           {% empty %}
-          <tr><td colspan="2" class="fin-empty">Todavía no hay maestros dados de alta.</td></tr>
+          <tr><td colspan="3" class="fin-empty">Todavía no hay personas dadas de alta.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -85,6 +87,30 @@
     </div>
   </div>
 
+  <form method="get" class="fin-card fin-card-pad fin-filter-form">
+    <div class="fin-field"><label>Mes</label>
+      <select name="mes">
+        {% for valor, etiqueta in meses %}
+        <option value="{{ valor }}"{% if periodo_mes == valor %} selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fin-field"><label>Año</label>
+      <select name="anio">
+        {% for valor in anios %}
+        <option value="{{ valor }}"{% if periodo_anio == valor %} selected{% endif %}>{{ valor }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="fin-btn-outline">Ver periodo</button>
+    <span class="fin-periodo-nav">
+      <a class="fin-btn-mini" href="{{ url_anterior }}" title="Mes anterior">&larr; Anterior</a>
+      <a class="fin-btn-mini" href="{{ url_periodo_actual }}">Mes en curso</a>
+      <a class="fin-btn-mini" href="{{ url_siguiente }}" title="Mes siguiente">Siguiente &rarr;</a>
+    </span>
+    <span class="fin-table-meta fin-field-full">La nómina de Academia se agrupa por <b>mes calendario</b>. Selecciona mes y año para ver ese periodo y sus totales.</span>
+  </form>
+
   <div class="fin-card fin-table-card">
     <div class="fin-table-toolbar">
       <div class="fin-card-title">Nóminas de Academia capturadas</div>
@@ -101,16 +127,28 @@
           </select>
         </form>
         {% endif %}
+        <a class="fin-btn-primary fin-btn-activo" href="{% url 'finanzas:nomina_academia_periodo_descargar' periodo_anio periodo_mes %}" title="Descargar el PDF del periodo que estás viendo">Descargar PDF</a>
         {% if hay_borradores %}
         <button type="button" class="fin-btn-outline" onclick="document.getElementById('dialog-sellar-periodo').showModal()">Sellar periodo</button>
         {% endif %}
+      </div>
+    </div>
+    <div class="fin-nomina-resumen" style="padding: 14px 22px 0;">
+      <div class="fin-table-meta" style="margin: 0 0 10px;">Totales del periodo <b>{{ periodo_totales }}</b></div>
+      <div class="fin-stat-row" style="margin-bottom: 0;">
+        <div class="fin-stat"><div class="fin-stat-label">Total del periodo</div><div class="fin-stat-value">{{ totales.total_general|dinero }}</div></div>
+        <div class="fin-stat"><div class="fin-stat-label">Pendiente por dispersar</div><div class="fin-stat-value">{{ totales.pendiente_dispersar|dinero }}</div></div>
+        <div class="fin-stat"><div class="fin-stat-label">Pendiente transferencia</div><div class="fin-stat-value">{{ totales.pendiente_transferencia|dinero }}</div></div>
+        <div class="fin-stat"><div class="fin-stat-label">Pendiente efectivo</div><div class="fin-stat-value">{{ totales.pendiente_efectivo|dinero }}</div></div>
+        <div class="fin-stat"><div class="fin-stat-label">Vales / extras pendientes</div><div class="fin-stat-value">{{ totales.vales_pendientes|dinero }}</div></div>
       </div>
     </div>
     <div class="fin-table-wrap">
       <table class="fin-table">
         <thead>
           <tr>
-            <th>Maestro</th>
+            <th>Persona</th>
+            <th>Tipo</th>
             <th>Periodo</th>
             <th>Conceptos</th>
             <th>Método</th>
@@ -124,6 +162,7 @@
           {% for n in nominas %}
           <tr>
             <td><b>{{ n.maestro.nombre }}</b></td>
+            <td>{{ n.maestro.get_tipo_display }}</td>
             <td>
               {{ n.periodo_mes }}/{{ n.periodo_anio }}
               {% if n.fecha_pago %}<div class="fin-table-meta">Pago: {{ n.fecha_pago|date:'d/m/Y' }}</div>{% endif %}
@@ -134,9 +173,11 @@
               {% endfor %}
             </td>
             <td>{{ n.get_metodo_pago_display|default:'Pendiente de asignar' }}</td>
-            <td><span class="fin-badge fin-badge-{% if n.esta_sellada %}vigente{% else %}pendiente{% endif %}">{{ n.get_estado_display }}</span></td>
+            <td>{{ n.get_estado_display }}</td>
             <td>
               {% if n.esta_sellada %}
+              <span class="fin-badge fin-badge-{% if n.estatus == 'pagado' %}pagado{% else %}pendiente{% endif %}">{{ n.get_estatus_display }}</span>
+              {% else %}
               <form method="post" class="fin-inline-form">
                 {% csrf_token %}
                 <input type="hidden" name="accion" value="estatus_academia">
@@ -147,7 +188,7 @@
                   {% endfor %}
                 </select>
               </form>
-              {% else %}<span class="fin-table-meta">—</span>{% endif %}
+              {% endif %}
             </td>
             <td class="num"><b>{{ n.total|dinero }}</b></td>
             <td class="fin-acciones-celda">
@@ -218,7 +259,7 @@
     {% csrf_token %}
     <input type="hidden" name="accion" value="maestro">
     <div class="fin-modal-header">
-      <div class="fin-card-title">Agregar maestro</div>
+      <div class="fin-card-title">Agregar persona</div>
       <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
     </div>
     <div class="fin-modal-grid">
@@ -226,6 +267,11 @@
         <label for="{{ form_maestro.nombre.id_for_label }}">Nombre</label>
         {{ form_maestro.nombre }}
         {% if form_maestro.nombre.errors %}<span class="fin-field-error">{{ form_maestro.nombre.errors.0 }}</span>{% endif %}
+      </div>
+      <div class="fin-field fin-field-full">
+        <label for="{{ form_maestro.tipo.id_for_label }}">Tipo</label>
+        {{ form_maestro.tipo }}
+        {% if form_maestro.tipo.errors %}<span class="fin-field-error">{{ form_maestro.tipo.errors.0 }}</span>{% endif %}
       </div>
       <div class="fin-field">
         <label for="{{ form_maestro.activo.id_for_label }}">Activo</label>

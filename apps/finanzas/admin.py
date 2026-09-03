@@ -57,8 +57,8 @@ class DonativoAdmin(admin.ModelAdmin):
 
 @admin.register(Maestro)
 class MaestroAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'activo')
-    list_filter = ('activo',)
+    list_display = ('nombre', 'tipo', 'activo')
+    list_filter = ('activo', 'tipo')
     search_fields = ('nombre',)
 
 

@@ -198,3 +198,35 @@ def totales_periodo_academia(periodo_mes, periodo_anio):
             nomina__periodo_mes=periodo_mes, nomina__periodo_anio=periodo_anio,
         ).aggregate(total=Sum('subtotal'))['total'] or Decimal('0'),
     }
+
+
+def totales_academia(nominas):
+    """Los cinco totales que se muestran como KPIs en la pantalla de Nómina
+    Academia, con la misma semántica que `totales_nomina` de la Nómina
+    semanal. El equivalente de "vales/extras" en Academia es el concepto
+    manual autorizado, así que se suma el importe pendiente de esos
+    conceptos."""
+    nominas = list(nominas)
+    pendientes = [
+        n for n in nominas if n.estatus == NominaAcademia.Estatus.PENDIENTE
+    ]
+    ids_pendientes = [n.id for n in pendientes]
+    extras_pendientes = Decimal('0')
+    if ids_pendientes:
+        extras_pendientes = ConceptoNominaAcademia.objects.filter(
+            nomina_id__in=ids_pendientes,
+            concepto=ConceptoNominaAcademia.Concepto.MANUAL,
+        ).aggregate(total=Sum('subtotal'))['total'] or Decimal('0')
+    return {
+        'total_general': sum((n.total for n in nominas), Decimal('0')),
+        'pendiente_dispersar': sum((n.total for n in pendientes), Decimal('0')),
+        'pendiente_transferencia': sum(
+            (n.total for n in pendientes if n.metodo_pago == NominaAcademia.MetodoPago.TRANSFERENCIA),
+            Decimal('0'),
+        ),
+        'pendiente_efectivo': sum(
+            (n.total for n in pendientes if n.metodo_pago == NominaAcademia.MetodoPago.EFECTIVO),
+            Decimal('0'),
+        ),
+        'vales_pendientes': extras_pendientes,
+    }

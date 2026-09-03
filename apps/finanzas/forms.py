@@ -184,9 +184,10 @@ class NominaAcademiaCaptureForm(forms.Form):
 class MaestroForm(forms.ModelForm):
     class Meta:
         model = Maestro
-        fields = ['nombre', 'activo']
+        fields = ['nombre', 'tipo', 'activo']
         widgets = {
-            'nombre': forms.TextInput(attrs={**_ATTRS, 'placeholder': 'Nombre del maestro'}),
+            'nombre': forms.TextInput(attrs={**_ATTRS, 'placeholder': 'Nombre de la persona'}),
+            'tipo': forms.Select(attrs=_ATTRS),
         }
 
 

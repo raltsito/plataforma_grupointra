@@ -35,7 +35,8 @@ from .models import (
 )
 from .nomina_academia import (
     NominaAcademiaError, capturar_nomina_academia, reabrir_nomina_academia,
-    sellar_nomina_academia, sellar_periodo_academia, totales_periodo_academia,
+    sellar_nomina_academia, sellar_periodo_academia,
+    totales_academia, totales_periodo_academia,
 )
 from .nomina_semanal import (
     NominaError, calcular_ingreso_generado, ingresos_generados_por_persona,
@@ -477,6 +478,31 @@ def _url_nomina(tipo, inicio, fin):
         f"{reverse('finanzas:nomina')}?tipo={tipo}"
         f'&fecha_inicio={inicio.isoformat()}&fecha_fin={fin.isoformat()}'
     )
+
+
+def _url_nomina_academia(mes, anio):
+    """URL de la pantalla de Nómina Academia para un periodo (mes/año)."""
+    return f"{reverse('finanzas:nomina_academia')}?mes={mes}&anio={anio}"
+
+
+def _periodo_academia_adyacente(mes, anio, delta_meses):
+    """Devuelve (mes, anio) desplazado `delta_meses` meses desde mes/anio."""
+    ref = date(anio, mes, 1)
+    if delta_meses >= 0:
+        nuevo = ref
+        for _ in range(delta_meses):
+            nuevo = date(
+                nuevo.year + (1 if nuevo.month == 12 else 0),
+                (nuevo.month % 12) + 1, 1,
+            )
+    else:
+        nuevo = ref
+        for _ in range(-delta_meses):
+            nuevo = date(
+                nuevo.year - (1 if nuevo.month == 1 else 0),
+                (nuevo.month - 2) % 12 + 1, 1,
+            )
+    return nuevo.month, nuevo.year
 
 
 def _guardar_borrador_nomina(request, nomina):
@@ -998,7 +1024,11 @@ def nomina_academia_view(request):
                 messages.error(request, str(exc))
             return redirect('finanzas:nomina_academia')
         elif accion == 'estatus_academia':
-            _actualizar_estatus_simple(request, NominaAcademia, 'estatus', NominaAcademia.Estatus.values)
+            nomina = get_object_or_404(NominaAcademia, pk=request.POST.get('id'))
+            if nomina.esta_sellada:
+                messages.error(request, 'Esta nómina ya está sellada; su estatus de pago no se puede modificar.')
+            else:
+                _actualizar_estatus_simple(request, NominaAcademia, 'estatus', NominaAcademia.Estatus.values)
             return redirect('finanzas:nomina_academia')
         else:
             form = NominaAcademiaCaptureForm(request.POST)
@@ -1024,10 +1054,21 @@ def nomina_academia_view(request):
                     messages.error(request, str(exc))
                 return redirect('finanzas:nomina_academia')
 
+    mes = hoy.month
+    anio = hoy.year
+    try:
+        mes_q = int(request.GET.get('mes') or '')
+        anio_q = int(request.GET.get('anio') or '')
+        if 1 <= mes_q <= 12 and 1900 <= anio_q <= 2200:
+            mes, anio = mes_q, anio_q
+    except (TypeError, ValueError):
+        pass
+
     nominas = (
         NominaAcademia.objects.select_related('maestro', 'usuario_genera')
         .prefetch_related('conceptos')
-        .order_by('-periodo_anio', '-periodo_mes')[:50]
+        .filter(periodo_mes=mes, periodo_anio=anio)
+        .order_by('maestro__nombre')
     )
     periodos = (
         NominaAcademia.objects.values('periodo_anio', 'periodo_mes')
@@ -1035,6 +1076,11 @@ def nomina_academia_view(request):
     )
     for p in periodos:
         p['etiqueta'] = f"{MESES_ABREV[p['periodo_mes']]} {p['periodo_anio']}"
+    totales = totales_academia(
+        NominaAcademia.objects.filter(periodo_mes=mes, periodo_anio=anio),
+    )
+    mes_ant, anio_ant = _periodo_academia_adyacente(mes, anio, -1)
+    mes_sig, anio_sig = _periodo_academia_adyacente(mes, anio, 1)
     contexto = {
         'vista_actual': 'nomina_academia',
         'form': form,
@@ -1047,8 +1093,17 @@ def nomina_academia_view(request):
         'maestros': Maestro.objects.order_by('-activo', 'nombre'),
         'tabuladores_academia': TabuladorAcademia.objects.order_by('concepto', '-vigente_desde'),
         'hoy': hoy.isoformat(),
+        'periodo_mes': mes,
+        'periodo_anio': anio,
         'mes_actual': hoy.month,
         'anio_actual': hoy.year,
+        'meses': [(m, MESES_ABREV[m]) for m in range(1, 13)],
+        'anios': list(range(hoy.year - 2, hoy.year + 2)),
+        'totales': totales,
+        'periodo_totales': f'{MESES_ABREV[mes]} {anio}',
+        'url_anterior': _url_nomina_academia(mes_ant, anio_ant),
+        'url_siguiente': _url_nomina_academia(mes_sig, anio_sig),
+        'url_periodo_actual': _url_nomina_academia(hoy.month, hoy.year),
     }
     return render(request, 'finanzas/nomina_academia.html', contexto)
 
@@ -1078,6 +1133,7 @@ def nomina_academia_periodo_descargar_view(request, anio, mes):
     documento, con total por docente y total general (sección 6.1 del
     documento, "Totales")."""
     nominas, totales = totales_periodo_academia(mes, anio)
+    totales.update(totales_academia(nominas))
     contexto = {
         'nominas': nominas,
         'totales': totales,

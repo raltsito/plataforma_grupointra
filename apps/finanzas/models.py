@@ -393,20 +393,25 @@ class Donativo(models.Model):
 
 
 class Maestro(models.Model):
-    """Docente de Academia. No es un FK a Usuario del portal (igual que
-    Egreso.persona / CitaRecepcion.terapeuta): hoy no existen cuentas de
-    Usuario para el personal de Academia."""
+    """Persona de Academia (maestro o administrativo). No es un FK a Usuario
+    del portal (igual que Egreso.persona / CitaRecepcion.terapeuta): hoy no
+    existen cuentas de Usuario para el personal de Academia."""
+
+    class Tipo(models.TextChoices):
+        MAESTRO = 'maestro', 'Maestro'
+        ADMINISTRATIVO = 'administrativo', 'Administrativo'
 
     nombre = models.CharField(max_length=150)
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.MAESTRO)
     activo = models.BooleanField(default=True)
 
     class Meta:
-        verbose_name = 'Maestro (Academia)'
-        verbose_name_plural = 'Maestros (Academia)'
+        verbose_name = 'Persona (Academia)'
+        verbose_name_plural = 'Personas (Academia)'
         ordering = ['nombre']
 
     def __str__(self):
-        return self.nombre
+        return f'{self.nombre} ({self.get_tipo_display()})'
 
 
 class TabuladorAcademia(models.Model):

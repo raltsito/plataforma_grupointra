@@ -4,40 +4,41 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: letter portrait; margin: 1.5cm; }
+  @page { size: letter landscape; margin: 1.4cm; }
   body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #1B2C4F; }
   .encabezado { width: 100%; margin-bottom: 10px; }
   .encabezado table { width: 100%; }
   .encabezado img { height: 42px; }
-  .titulo { font-size: 15pt; font-weight: bold; }
+  .titulo { font-size: 15pt; font-weight: bold; color: #1B2C4F; }
   .subtitulo { font-size: 8.5pt; color: #555; margin-top: 3px; }
   .estatus-badge {
     display: inline-block; padding: 3px 10px; border-radius: 10px;
-    font-size: 8pt; font-weight: bold; color: #fff; background-color: #1B2C4F;
+    font-size: 8pt; font-weight: bold; color: #fff;
   }
+  .estatus-sellada { background-color: #1F8A5B; }
+  .estatus-borrador { background-color: #C9622B; }
+  .nota-estatus { font-size: 7.5pt; color: #777; margin-top: 4px; }
   table.fin-pdf-tabla { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
   table.fin-pdf-tabla th {
     background-color: #1B2C4F; color: #fff; text-align: left;
-    padding: 5px 6px; font-size: 8pt; word-wrap: break-word;
+    padding: 5px 5px; font-size: 7.5pt; word-wrap: break-word;
   }
   table.fin-pdf-tabla td {
-    padding: 5px 6px; border-bottom: 1px solid #E6EAF2; font-size: 8.5pt;
+    padding: 5px 5px; border-bottom: 1px solid #E6EAF2; font-size: 8pt;
     word-wrap: break-word; overflow-wrap: break-word;
   }
   table.fin-pdf-tabla td.num { text-align: right; }
-  /* Evita que xhtml2pdf corte una fila justo en el salto de página: sin
-     esto el fondo de la fila del docente siguiente se pinta sobre la
-     anterior y los apartados se ven encimados. */
   table.fin-pdf-tabla tr { page-break-inside: avoid; }
   tr.fila-docente td { background-color: #F7F9FC; font-weight: bold; }
   tr.fila-total td { background-color: #F3F5FA; font-weight: bold; border-top: 2px solid #1B2C4F; font-size: 9.5pt; }
   .fin-pdf-totales { width: 100%; margin-top: 14px; }
   .fin-pdf-totales table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .fin-pdf-totales td {
-    background-color: #F3F5FA; padding: 8px; text-align: center; border: 1px solid #E6EAF2;
+    background-color: #F3F5FA; padding: 8px; text-align: center;
+    border: 1px solid #E6EAF2;
   }
   .fin-pdf-totales .label { display: block; font-size: 7.5pt; color: #555; margin-bottom: 3px; }
-  .fin-pdf-totales .valor { display: block; font-size: 11pt; font-weight: bold; }
+  .fin-pdf-totales .valor { display: block; font-size: 11pt; font-weight: bold; color: #1B2C4F; }
   .fin-pdf-pie { margin-top: 16px; font-size: 8pt; color: #888; }
 </style>
 </head>
@@ -54,8 +55,14 @@
             Generó: {{ usuario_genera.get_full_name|default:usuario_genera.username }}
           </div>
         </td>
-        <td style="text-align: right; width: 120px;">
-          <span class="estatus-badge">{{ totales.docentes }} docente{{ totales.docentes|pluralize:"s" }}</span>
+        <td style="text-align: right; width: 220px;">
+          <span class="estatus-badge {% if totales.pendiente_dispersar %}estatus-borrador{% else %}estatus-sellada{% endif %}">
+            {{ totales.docentes }} persona{{ totales.docentes|pluralize:"s" }}
+          </span>
+          <div class="nota-estatus">
+            {% if totales.pendiente_dispersar %}Hay nóminas pendientes de pago en este periodo.
+            {% else %}Todas las nóminas del periodo están pagadas.{% endif %}
+          </div>
         </td>
       </tr>
     </table>
@@ -64,39 +71,52 @@
   <table class="fin-pdf-tabla">
     <thead>
       <tr>
-        <th style="width: 26%;">Docente</th>
-        <th style="width: 24%;">Concepto</th>
-        <th class="num" style="width: 10%;">Cantidad</th>
-        <th class="num" style="width: 12%;">Tarifa</th>
-        <th class="num" style="width: 14%;">Subtotal</th>
-        <th style="width: 14%;">Estado</th>
+        <th>Persona</th>
+        <th>Tipo</th>
+        <th>Concepto</th>
+        <th class="num">Cantidad</th>
+        <th class="num">Tarifa</th>
+        <th class="num">Subtotal</th>
+        <th>Método</th>
+        <th>Estado</th>
       </tr>
     </thead>
     <tbody>
       {% for n in nominas %}
         {% for c in n.conceptos.all %}
         <tr>
-          <td>{% if forloop.first %}{{ n.maestro.nombre }}{% endif %}</td>
+          <td>{% if forloop.first %}{{ n.maestro.nombre }}{% else %}&nbsp;{% endif %}</td>
+          <td>{% if forloop.first %}{{ n.maestro.get_tipo_display }}{% else %}&nbsp;{% endif %}</td>
           <td>{{ c.get_concepto_display }}{% if c.descripcion %} · {{ c.descripcion }}{% endif %}</td>
           <td class="num">{{ c.cantidad }}</td>
           <td class="num">{{ c.tarifa|dinero }}</td>
           <td class="num">{{ c.subtotal|dinero }}</td>
-          <td>{% if forloop.first %}{{ n.get_estado_display }}{% endif %}</td>
+          <td>{% if forloop.first %}{{ n.get_metodo_pago_display|default:'—' }}{% else %}&nbsp;{% endif %}</td>
+          <td>{% if forloop.first %}{{ n.get_estatus_display }}{% else %}&nbsp;{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr class="fila-docente">
+          <td>{{ n.maestro.nombre }}</td>
+          <td>{{ n.maestro.get_tipo_display }}</td>
+          <td colspan="4">Sin conceptos capturados.</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
         </tr>
         {% endfor %}
         <tr class="fila-docente">
-          <td colspan="4">Total {{ n.maestro.nombre }} · {{ n.get_metodo_pago_display|default:'método por definir' }}</td>
+          <td colspan="5">Total {{ n.maestro.nombre }}</td>
           <td class="num">{{ n.total|dinero }}</td>
-          <td>{{ n.get_estatus_display }}</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
         </tr>
       {% empty %}
-      <tr><td colspan="6">No hay nóminas de Academia capturadas en este periodo.</td></tr>
+      <tr><td colspan="8">No hay nóminas de Academia capturadas en este periodo.</td></tr>
       {% endfor %}
       {% if nominas %}
       <tr class="fila-total">
-        <td colspan="4">TOTAL GENERAL DEL PERIODO</td>
+        <td colspan="5">TOTAL GENERAL DEL PERIODO</td>
         <td class="num">{{ totales.total_general|dinero }}</td>
-        <td></td>
+        <td colspan="2">&nbsp;</td>
       </tr>
       {% endif %}
     </tbody>
@@ -106,20 +126,20 @@
     <table>
       <tr>
         <td>
-          <span class="label">Total transferencia</span>
-          <span class="valor">{{ totales.total_transferencia|dinero }}</span>
+          <span class="label">Pendiente por dispersar</span>
+          <span class="valor">{{ totales.pendiente_dispersar|dinero }}</span>
         </td>
         <td>
-          <span class="label">Total efectivo</span>
-          <span class="valor">{{ totales.total_efectivo|dinero }}</span>
+          <span class="label">Pendiente transferencia</span>
+          <span class="valor">{{ totales.pendiente_transferencia|dinero }}</span>
         </td>
         <td>
-          <span class="label">Pendiente de pago</span>
-          <span class="valor">{{ totales.total_pendiente|dinero }}</span>
+          <span class="label">Pendiente efectivo</span>
+          <span class="valor">{{ totales.pendiente_efectivo|dinero }}</span>
         </td>
         <td>
-          <span class="label">Total general</span>
-          <span class="valor">{{ totales.total_general|dinero }}</span>
+          <span class="label">Vales / extras pendientes</span>
+          <span class="valor">{{ totales.vales_pendientes|dinero }}</span>
         </td>
       </tr>
     </table>
