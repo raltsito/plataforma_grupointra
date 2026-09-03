@@ -6,14 +6,6 @@
 
 {% block contenido %}
     <div class="intera-stack">
-        <p>
-            <a
-                href="{% url 'certificacion_intera:canalizacion_detalle' canalizacion.id %}"
-            >
-                ← Volver a la canalización
-            </a>
-        </p>
-
         <section class="intera-card intera-card-pad">
             <h1>
                 Enviar a Consultorio Web
@@ -124,6 +116,15 @@
                 <p class="intera-integration-warning">
                     {{ readiness_error }}
                 </p>
+
+                <div class="intera-form-actions">
+                    <a
+                        class="intera-btn intera-btn-secondary"
+                        href="{% url 'certificacion_intera:canalizacion_detalle' canalizacion.id %}"
+                    >
+                        Cancelar
+                    </a>
+                </div>
             {% else %}
                 <form
                     class="intera-confirm-form"
@@ -146,6 +147,7 @@
 
                     <div class="intera-form-actions">
                         <a
+                            class="intera-btn intera-btn-secondary"
                             href="{% url 'certificacion_intera:canalizacion_detalle' canalizacion.id %}"
                         >
                             Cancelar

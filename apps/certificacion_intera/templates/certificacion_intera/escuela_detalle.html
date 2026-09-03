@@ -5,22 +5,12 @@
 {% endblock %}
 
 {% block contenido %}
-    <div class="intera-stack">
+    <div class="intera-stack intera-school-record">
         <div class="intera-page-nav">
-            <div class="intera-crumbs">
-                <a href="{% url 'certificacion_intera:escuelas' %}">
-                    Escuelas
-                </a>
-                <span aria-hidden="true">/</span>
-                <span>{{ escuela.nombre }}</span>
-            </div>
 
-            <a class="intera-back-link" href="{{ return_url }}">
-                ← Volver a escuelas
-            </a>
         </div>
 
-        <section class="intera-card intera-card-pad">
+        <section class="intera-card intera-card-pad intera-school-head">
             <div class="intera-card-head">
                 <div>
                     <h1>
@@ -89,6 +79,72 @@
                 </a>
             </nav>
         </section>
+
+        {% if proceso_vigente %}
+            <section class="intera-card intera-public-access-card intera-school-public-access">
+                <div class="intera-public-access-copy">
+                    <span class="intera-feature-icon" aria-hidden="true">◎</span>
+                    <div>
+                        <h2>Acceso para participantes</h2>
+                        <p>
+                            {{ proceso_vigente.nombre }} ·
+                            {{ proceso_vigente.ciclo_escolar }} ·
+                            {{ proceso_vigente.get_estado_display }}
+                        </p>
+                    </div>
+                </div>
+
+                {% if aplicacion_publica_vigente %}
+                    <div class="intera-public-access-tools">
+                        <input
+                            class="intera-public-link"
+                            readonly
+                            aria-label="Enlace público para participantes"
+                            value="{{ url_publica_vigente }}"
+                        >
+
+                        <button
+                            class="intera-btn intera-btn-secondary"
+                            type="button"
+                            data-copy-school
+                            data-copy-value="{{ url_publica_vigente }}"
+                        >
+                            Copiar enlace
+                        </button>
+
+                        <a
+                            class="intera-btn intera-btn-secondary"
+                            href="{% url 'certificacion_intera:aplicacion_publica_proceso_qr' proceso_vigente.id %}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            Ver QR
+                        </a>
+
+                        <a
+                            class="intera-text-link"
+                            href="{{ aplicacion_publica_vigente.url_publica }}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            Abrir aplicación →
+                        </a>
+                    </div>
+
+                    <span class="intera-school-copy-status" role="status" aria-live="polite" data-school-copy-status></span>
+                {% else %}
+                    <div class="intera-school-public-empty">
+                        <p>Este proceso todavía no cuenta con un acceso público.</p>
+                        <a
+                            class="intera-text-link"
+                            href="{% url 'certificacion_intera:proceso_detalle' proceso_vigente.id %}"
+                        >
+                            Ir al proceso →
+                        </a>
+                    </div>
+                {% endif %}
+            </section>
+        {% endif %}
 
         {% if tab == 'resumen' %}
             <div class="intera-kpi-grid">
@@ -281,4 +337,43 @@
             </section>
         {% endif %}
     </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        document
+            .querySelectorAll('[data-copy-school]')
+            .forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var value = button.dataset.copyValue;
+                    var status = document.querySelector('[data-school-copy-status]');
+
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(value).then(
+                            function () {
+                                if (status) {
+                                    status.textContent = 'Enlace copiado.';
+                                }
+                            },
+                            function () {
+                                if (status) {
+                                    status.textContent = 'No fue posible copiarlo automáticamente.';
+                                }
+                            }
+                        );
+
+                        return;
+                    }
+
+                    var input = document.querySelector('.intera-school-public-access .intera-public-link');
+                    if (input) {
+                        input.focus();
+                        input.select();
+                    }
+                    if (status) {
+                        status.textContent = 'Enlace seleccionado para copiarlo manualmente.';
+                    }
+                });
+            });
+    </script>
 {% endblock %}

@@ -1,22 +1,16 @@
 {% extends 'certificacion_intera/_base.html' %}
 
 {% block titulo %}
-    Acceso a entrevista 1:1
+    Acceso a entrevista individual
 {% endblock %}
 
 {% block contenido %}
-    <div class="intera-stack">
-        <p>
-            <a
-                href="{% url 'certificacion_intera:participante_detalle' participante.id %}"
-            >
-                ← Volver al participante
-            </a>
-        </p>
+    <div class="intera-stack intera-identity-access">
+
 
         <section class="intera-card intera-card-pad">
             <h1>
-                Entrevista 1:1
+                Entrevista
             </h1>
 
             <p>

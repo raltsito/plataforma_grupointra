@@ -5,7 +5,111 @@
 {% endblock %}
 
 {% block contenido %}
-    <section class="intera-card">
+    <div class="intera-stack intera-directory-page">
+    {% if tipo_listado == 'procesos' %}
+        <section class="intera-card intera-card-pad intera-filter-card">
+            <form method="get" class="intera-form-grid intera-filter-grid intera-filter-grid--processes">
+                <div class="intera-field intera-filter-field">
+                    <label for="q">Buscar</label>
+                    <input id="q" name="q" value="{{ q }}" placeholder="Proceso, escuela o ciclo">
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="escuela">Escuela</label>
+                    <select id="escuela" name="escuela">
+                        <option value="">Todas</option>
+                        {% for escuela in escuelas_filtro %}
+                            <option value="{{ escuela.id }}" {% if filtros.escuela == escuela.id|stringformat:'s' %}selected{% endif %}>{{ escuela.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="operativo">Estado</label>
+                    <select id="operativo" name="operativo">
+                        <option value="">Todos</option>
+                        <option value="activo" {% if estado_operativo == 'activo' %}selected{% endif %}>Activos</option>
+                        <option value="cerrado" {% if estado_operativo == 'cerrado' %}selected{% endif %}>Cerrados</option>
+                    </select>
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="etapa">Etapa</label>
+                    <select id="etapa" name="etapa">
+                        <option value="">Todas</option>
+                        {% for valor, etiqueta in etapas_proceso %}
+                            <option value="{{ valor }}" {% if etapa_actual == valor %}selected{% endif %}>{{ etiqueta }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="periodo">Ciclo</label>
+                    <input id="periodo" name="periodo" value="{{ filtros.periodo|default:'' }}" placeholder="2026-2027">
+                </div>
+                <div class="intera-form-actions intera-filter-actions">
+                    <a class="intera-text-link intera-filter-reset" href="{% url 'certificacion_intera:procesos' %}">Limpiar</a>
+                    <button class="intera-btn intera-filter-submit" type="submit">Filtrar</button>
+                </div>
+            </form>
+        </section>
+    {% elif tipo_listado == 'participantes' or tipo_listado == 'entrevistas' or tipo_listado == 'seguimiento' %}
+        <section class="intera-card intera-card-pad intera-filter-card">
+            <form method="get" class="intera-form-grid intera-filter-grid intera-filter-grid--directory{% if tipo_listado == 'entrevistas' %} intera-filter-grid--with-date{% endif %}">
+                <div class="intera-field intera-filter-field">
+                    <label for="q">Buscar</label>
+                    <input id="q" name="q" value="{{ q }}" placeholder="Nombre o matrícula">
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="escuela">Escuela</label>
+                    <select id="escuela" name="escuela">
+                        <option value="">Todas</option>
+                        {% for escuela in escuelas_filtro %}
+                            <option value="{{ escuela.id }}" {% if filtros.escuela == escuela.id|stringformat:'s' %}selected{% endif %}>{{ escuela.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="proceso">Proceso</label>
+                    <select id="proceso" name="proceso">
+                        <option value="">Todos</option>
+                        {% for proceso in procesos_filtro %}
+                            <option value="{{ proceso.id }}" {% if filtros.proceso == proceso.id|stringformat:'s' %}selected{% endif %}>{{ proceso.nombre }} · {{ proceso.escuela.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="intera-field intera-filter-field">
+                    <label for="estado">{% if tipo_listado == 'entrevistas' %}Decisión{% else %}Estado{% endif %}</label>
+                    <select id="estado" name="estado">
+                        <option value="">Todos</option>
+                        {% if tipo_listado == 'participantes' %}
+                            <option value="pendiente" {% if filtros.estado == 'pendiente' %}selected{% endif %}>Con aplicaciones pendientes</option>
+                            <option value="respondida" {% if filtros.estado == 'respondida' %}selected{% endif %}>Con respuestas</option>
+                            <option value="resultados" {% if filtros.estado == 'resultados' %}selected{% endif %}>Con resultados</option>
+                        {% else %}
+                            {% for valor, etiqueta in estados_filtro %}
+                                <option value="{{ valor }}" {% if filtros.estado == valor %}selected{% endif %}>{{ etiqueta }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                {% if tipo_listado == 'entrevistas' %}
+                    <div class="intera-field intera-filter-field">
+                        <label for="fecha">Fecha</label>
+                        <input id="fecha" name="fecha" type="date" value="{{ filtros.fecha|default:'' }}">
+                    </div>
+                {% endif %}
+                <div class="intera-form-actions intera-filter-actions">
+                    {% if tipo_listado == 'participantes' %}
+                        <a class="intera-text-link intera-filter-reset" href="{% url 'certificacion_intera:participantes' %}">Limpiar</a>
+                    {% elif tipo_listado == 'entrevistas' %}
+                        <a class="intera-text-link intera-filter-reset" href="{% url 'certificacion_intera:entrevistas' %}">Limpiar</a>
+                    {% else %}
+                        <a class="intera-text-link intera-filter-reset" href="{% url 'certificacion_intera:seguimiento' %}">Limpiar</a>
+                    {% endif %}
+                    <button class="intera-btn intera-filter-submit" type="submit">Filtrar</button>
+                </div>
+            </form>
+        </section>
+    {% endif %}
+
+    <section class="intera-card intera-directory-list">
         <div class="intera-card-head">
             <div>
                 <h2>
@@ -21,6 +125,19 @@
         {% if elementos %}
             <div class="intera-table-wrap">
                 <table class="intera-table">
+                    <thead>
+                        <tr>
+                            {% if tipo_listado == 'procesos' %}
+                                <th>Proceso</th><th>Estado operativo</th><th>Etapa</th><th class="intera-actions-column">Acciones</th>
+                            {% elif tipo_listado == 'participantes' %}
+                                <th>Participante</th><th>Identificador</th><th class="intera-actions-column">Acción</th>
+                            {% elif tipo_listado == 'entrevistas' %}
+                                <th>Participante</th><th>Escuela y proceso</th><th class="intera-actions-column">Acción</th>
+                            {% elif tipo_listado == 'seguimiento' %}
+                                <th>Participante</th><th>Escuela y proceso</th><th class="intera-actions-column">Acción</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
                     <tbody>
                         {% for elemento in elementos %}
                             <tr>
@@ -37,12 +154,21 @@
                                     </td>
 
                                     <td>
+                                        <span class="intera-status-badge intera-status-badge--{{ elemento.estado_operativo_clase }}">
+                                            <span class="intera-status-dot" aria-hidden="true"></span>
+                                            {{ elemento.estado_operativo_presentacion }}
+                                        </span>
+                                    </td>
+
+                                    <td><span class="intera-stage-badge">{{ elemento.etapa_presentacion }}</span></td>
+
+                                    <td>
                                         <div class="intera-actions">
                                         <a
                                             class="intera-list-action"
                                             href="{% url 'certificacion_intera:proceso_detalle' elemento.id %}"
                                         >
-                                            Abrir
+                                            Abrir proceso →
                                         </a>
                                         <a
                                             class="intera-list-action intera-list-action-danger"
@@ -65,13 +191,15 @@
                                         </small>
                                     </td>
 
+                                    <td>{{ elemento.numero_alumno }}{% if elemento.grupo %}<small>Grupo {{ elemento.grupo }}</small>{% endif %}</td>
+
                                     <td>
                                         <div class="intera-actions">
                                         <a
                                             class="intera-list-action"
                                             href="{% url 'certificacion_intera:participante_detalle' elemento.id %}"
                                         >
-                                            Abrir
+                                            Abrir expediente →
                                         </a>
                                         </div>
                                     </td>
@@ -88,13 +216,15 @@
                                         </small>
                                     </td>
 
+                                    <td>{{ elemento.participante.proceso.escuela.nombre }}<small>{{ elemento.participante.proceso.nombre }}</small></td>
+
                                     <td>
                                         <div class="intera-actions">
                                         <a
                                             class="intera-list-action"
                                             href="{% url 'certificacion_intera:participante_detalle' elemento.participante_id %}"
                                         >
-                                            Abrir
+                                            Abrir expediente →
                                         </a>
                                         </div>
                                     </td>
@@ -111,13 +241,15 @@
                                         </small>
                                     </td>
 
+                                    <td>{{ elemento.participante.proceso.escuela.nombre }}<small>{{ elemento.participante.proceso.nombre }}</small></td>
+
                                     <td>
                                         <div class="intera-actions">
                                         <a
                                             class="intera-list-action"
                                             href="{% url 'certificacion_intera:participante_detalle' elemento.participante_id %}"
                                         >
-                                            Abrir
+                                            Abrir expediente →
                                         </a>
                                         </div>
                                     </td>
@@ -140,7 +272,7 @@
                                             class="intera-list-action"
                                             href="{% url 'certificacion_intera:configuracion' elemento.proceso_id %}"
                                         >
-                                            Abrir
+                                            Abrir expediente →
                                         </a>
                                         </div>
                                     </td>
@@ -152,8 +284,19 @@
             </div>
         {% else %}
             <div class="intera-empty">
-                No hay registros disponibles todavía.
+                {% if tipo_listado == 'procesos' %}
+                    No hay procesos que coincidan con los filtros seleccionados.
+                {% elif tipo_listado == 'participantes' %}
+                    Aún no hay participantes registrados en los procesos.
+                {% elif tipo_listado == 'entrevistas' %}
+                    No hay entrevistas que coincidan con los filtros. Cuando se registre una entrevista de seguimiento aparecerá aquí.
+                {% elif tipo_listado == 'seguimiento' %}
+                    No hay sesiones que coincidan con los filtros. Los seguimientos de consejería aparecerán aquí cuando sean registrados.
+                {% else %}
+                    No hay registros disponibles todavía.
+                {% endif %}
             </div>
         {% endif %}
     </section>
+    </div>
 {% endblock %}

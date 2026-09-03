@@ -5,122 +5,151 @@
 {% endblock %}
 
 {% block contenido %}
-    <div class="intera-stack">
-        <div class="intera-header-actions">
-            <a
-                class="intera-btn"
-                href="{% url 'certificacion_intera:escuela_crear' %}"
-            >
-                Registrar escuela
-            </a>
+    <div class="intera-dashboard">
+        <section class="intera-card intera-panel-hero">
+            <div class="intera-panel-hero-content">
+                <div>
+                    <p class="intera-panel-eyebrow">
+                        Vista general
+                    </p>
 
-            <a
-                class="intera-btn"
-                href="{% url 'certificacion_intera:proceso_crear_general' %}"
-            >
-                Crear proceso
-            </a>
-        </div>
+                    </h2>
 
-        <div class="intera-kpi-grid">
-            <a
-                class="intera-kpi"
-                href="{% url 'certificacion_intera:procesos' %}"
-            >
-                Procesos activos
-
-                <strong>
-                    {{ procesos_activos }}
-                </strong>
-            </a>
-
-            <a
-                class="intera-kpi"
-                href="{% url 'certificacion_intera:participantes' %}"
-            >
-                Participantes registrados
-
-                <strong>
-                    {{ participantes_registrados }}
-                </strong>
-            </a>
-
-            <a
-                class="intera-kpi"
-                href="{% url 'certificacion_intera:entrevistas' %}"
-            >
-                Entrevistas pendientes
-
-                <strong>
-                    {{ entrevistas_pendientes }}
-                </strong>
-            </a>
-        </div>
-
-        <section class="intera-card">
-            <div class="intera-card-head">
-                <h2>
-                    Trabajo pendiente
-                </h2>
-            </div>
-
-            {% for item in trabajo_pendiente %}
-                <a
-                    class="intera-list-row"
-                    href="{{ item.url }}"
-                >
-                    <span>
-                        <b>
-                            {{ item.titulo }}
-                        </b>
-
-                        <small>
-                            {{ item.situacion }}
-                        </small>
-                    </span>
-
-                    <time>
-                        {{ item.accion }} →
-                    </time>
-                </a>
-            {% empty %}
-                <div class="intera-empty">
-                    No hay trabajo pendiente.
                 </div>
-            {% endfor %}
-        </section>
 
-        <section class="intera-card">
-            <div class="intera-card-head">
-                <h2>
-                    Escuelas recientes
-                </h2>
+                <div class="intera-panel-actions">
+                    <a
+                        class="intera-btn"
+                        href="{% url 'certificacion_intera:escuela_crear' %}"
+                    >
+                        Registrar escuela
+                    </a>
 
-                <a href="{% url 'certificacion_intera:escuelas' %}">
-                    Ver todas →
-                </a>
+                    <a
+                        class="intera-btn"
+                        href="{% url 'certificacion_intera:proceso_crear_general' %}"
+                    >
+                        Crear proceso
+                    </a>
+                    {% if puede_generar_documentos %}
+                        <a
+                            class="intera-btn intera-btn-secondary"
+                            href="{% url 'certificacion_intera:documentos' %}"
+                        >
+                            Generar documento
+                        </a>
+                    {% else %}
+                        <button
+                            class="intera-btn intera-btn-secondary"
+                            type="button"
+                            disabled
+                            title="No tienes permiso para generar documentos"
+                        >
+                            Generar documento
+                        </button>
+                    {% endif %}
+</div>
+                </div>
             </div>
-
-            {% for escuela in escuelas_recientes %}
-                <a
-                    class="intera-list-row"
-                    href="{% url 'certificacion_intera:escuela_detalle' escuela.id %}"
-                >
-                    <span>
-                        <b>
-                            {{ escuela.nombre }}
-                        </b>
-
-                        <small>
-                            {{ escuela.municipio }}, {{ escuela.estado }}
-                        </small>
-                    </span>
-
-                    <time>
-                        Ver escuela →
-                    </time>
-                </a>
-            {% endfor %}
         </section>
+
+        <div class="intera-kpi-grid intera-kpi-grid--panel">
+    <a class="intera-kpi intera-kpi--accent" href="{% url 'certificacion_intera:procesos' %}">
+        <span class="intera-kpi-label">Procesos activos</span>
+        <strong>{{ procesos_activos }}</strong>
+        <small>Ver listado de procesos →</small>
+    </a>
+
+    <a class="intera-kpi intera-kpi--success" href="{% url 'certificacion_intera:participantes' %}">
+        <span class="intera-kpi-label">Participantes registrados</span>
+        <strong>{{ participantes_registrados }}</strong>
+        <small>Consultar participantes →</small>
+    </a>
+
+    <a class="intera-kpi intera-kpi--warning" href="{% url 'certificacion_intera:entrevistas' %}">
+        <span class="intera-kpi-label">Entrevistas pendientes</span>
+        <strong>{{ entrevistas_pendientes }}</strong>
+        <small>Revisar entrevistas →</small>
+    </a>
+
+
+   </div>
+
+
+        <div class="intera-panel-grid">
+            <section class="intera-card">
+                <div class="intera-card-head">
+                    <h2>
+                        Trabajo pendiente
+                    </h2>
+
+                    <a href="{% url 'certificacion_intera:entrevistas' %}">
+                        Ver pendientes →
+                    </a>
+                </div>
+
+                {% for item in trabajo_pendiente %}
+                    <a
+                        class="intera-list-row"
+                        href="{{ item.url }}"
+                    >
+                        <span>
+                            <b>
+                                {{ item.titulo }}
+                            </b>
+
+                            <small>
+                                {{ item.situacion }}
+                            </small>
+                        </span>
+
+                        <time>
+                            {{ item.accion }} →
+                        </time>
+                    </a>
+                {% empty %}
+                    <div class="intera-empty">
+                        No hay trabajo pendiente.
+                    </div>
+                {% endfor %}
+            </section>
+
+            <section class="intera-card">
+                <div class="intera-card-head">
+                    <h2>
+                        Escuelas recientes
+                    </h2>
+
+                    <a href="{% url 'certificacion_intera:escuelas' %}">
+                        Ver todas →
+                    </a>
+                </div>
+
+                {% for escuela in escuelas_recientes %}
+                    <a
+                        class="intera-list-row"
+                        href="{% url 'certificacion_intera:escuela_detalle' escuela.id %}"
+                    >
+                        <span>
+                            <b>
+                                {{ escuela.nombre }}
+                            </b>
+
+                            <small>
+                                {{ escuela.municipio }}, {{ escuela.estado }}
+                            </small>
+                        </span>
+
+                        <time>
+                            Ver escuela →
+                        </time>
+                    </a>
+                {% empty %}
+                    <div class="intera-empty">
+                        No hay escuelas registradas.
+                    </div>
+                {% endfor %}
+            </section>
+        </div>
     </div>
 {% endblock %}
