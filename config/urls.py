@@ -26,6 +26,7 @@ urlpatterns = [
     path('finanzas/', include('apps.finanzas.urls')),
     path('portafolio/', include('apps.portafolio.urls')),
     path('certificacion-intera/', include('apps.certificacion_intera.urls')),
+    path('api/mensajeria/v1/', include('apps.mensajeria.urls')),
     path('admin/', admin.site.urls),
 ]
 

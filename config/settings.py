@@ -88,6 +88,9 @@ INSTALLED_APPS = [
     # Módulo de Certificación INTERA: proceso de certificación escolar.
     'apps.certificacion_intera',
 
+    # Pasarela de mensajería (WhatsApp) compartida por los demás módulos.
+    'apps.mensajeria',
+
     'storages',
 
     'django.contrib.admin',
@@ -428,3 +431,29 @@ ENTREVISTA_1A1_AUTORIZACION_MINUTOS = int(
         '40',
     )
 )
+
+
+# Pasarela de mensajería (apps.mensajeria) -- contrato v1, ver
+# MENSAJERIA_PASARELA.md en la raíz del repo.
+#
+# Credenciales de la API de WhatsApp Cloud (Meta). Sin default a propósito:
+# igual que CONSULTORIOWEB_*, debe fallar ruidoso en Railway si falta.
+MENSAJERIA_WHATSAPP_TOKEN = os.environ.get('MENSAJERIA_WHATSAPP_TOKEN', '')
+MENSAJERIA_WHATSAPP_PHONE_NUMBER_ID = os.environ.get('MENSAJERIA_WHATSAPP_PHONE_NUMBER_ID', '')
+MENSAJERIA_WHATSAPP_API_VERSION = os.environ.get('MENSAJERIA_WHATSAPP_API_VERSION', 'v21.0')
+
+# Verificación de la suscripción del webhook (handshake GET de Meta) y
+# secreto de la app para validar la firma X-Hub-Signature-256 de cada
+# webhook entrante.
+MENSAJERIA_WEBHOOK_VERIFY_TOKEN = os.environ.get('MENSAJERIA_WEBHOOK_VERIFY_TOKEN', '')
+MENSAJERIA_WEBHOOK_APP_SECRET = os.environ.get('MENSAJERIA_WEBHOOK_APP_SECRET', '')
+
+# Catálogo de plantillas aprobadas por Grupo Intra (D5: la pasarela no
+# redacta, solo manda lo que ya está dado de alta aquí). Agregar una entrada
+# por cada plantilla nueva que se dé de alta en Meta Business Manager.
+MENSAJERIA_PLANTILLAS = {
+    'intra_recordatorio_cita_v1': {
+        'variables': ['1', '2', '3', '4'],
+        'idiomas': ['es_MX'],
+    },
+}
