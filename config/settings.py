@@ -456,4 +456,12 @@ MENSAJERIA_PLANTILLAS = {
         'variables': ['1', '2', '3', '4'],
         'idiomas': ['es_MX'],
     },
+    'intra_cotizacion_enviada_v1': {
+        'variables': ['1', '2', '3', '4', '5'],
+        'idiomas': ['es_MX'],
+    },
+    'intra_seguimiento_cotizacion_v1': {
+        'variables': ['1', '2'],
+        'idiomas': ['es_MX'],
+    },
 }

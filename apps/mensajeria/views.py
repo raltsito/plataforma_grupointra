@@ -50,7 +50,7 @@ def envios_view(request):
         'estado': envio.estado,
         'wa_message_id': envio.wa_message_id or None,
         'creado_en': envio.creado_en.isoformat(),
-    }, status=201 if envio.estado != Envio.Estado.BLOQUEADO else 200)
+    }, status=201)
 
 
 @require_GET

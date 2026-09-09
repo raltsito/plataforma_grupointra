@@ -141,6 +141,34 @@ ApiKey`) y sus webhooks de salida no son variables de entorno — son filas
 de `SistemaSuscrito` en la base de datos (usar `/admin/` o una migración de
 datos, igual que los grupos de `apps/core/permisos/grupos.py`).
 
+## Ajustes por el guion de pruebas de humo (paso 08, 2026-09-09)
+
+El equipo entregó un guion de 4 pruebas contra la pasarela ya desplegada
+(`docs`/raíz: guion de pruebas, no versionado aquí por traer números de
+teléfono y nombres de plantillas de negocio). Corriéndolo contra el código
+tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
+
+- **`MENSAJERIA_PLANTILLAS` solo tenía `intra_recordatorio_cita_v1`.** El
+  guion prueba tres plantillas reales del negocio
+  (`intra_recordatorio_cita_v1`, `intra_cotizacion_enviada_v1` con adjunto,
+  `intra_seguimiento_cotizacion_v1`). Se agregaron las otras dos al
+  catálogo en `config/settings.py` con las variables que usa el guion.
+  Falta que alguien confirme contra Meta Business Manager que el número y
+  nombre de variables coincide exactamente con lo aprobado — el catálogo
+  de este archivo es la fuente de verdad del lado del código, pero no
+  valida contra Meta.
+- **Un envío bloqueado (baja o fuera de ventana) devolvía un 200 de éxito
+  con `"estado": "bloqueado"`, sin `code`.** La prueba P3 exige que la
+  respuesta traiga el código `destinatario_dado_de_baja` en el formato de
+  error estándar de la sección 7 — el mismo criterio que ya se sigue para
+  `plantilla_desconocida` o `variables_incompletas`. Se corrigió: ahora un
+  envío bloqueado sigue quedando registrado en `Envio` con
+  `estado=bloqueado` y su `motivo_bloqueo` (auditoría), pero la respuesta
+  HTTP es un error 422 con `{"code": "destinatario_dado_de_baja", ...}`
+  igual que cualquier otro error de negocio. Un reintento con la misma
+  `Idempotency-Key` de un envío ya bloqueado repite el mismo error sin
+  volver a evaluar nada (coherente con D3).
+
 ## Pendiente
 
 1. **Conectar `crm_ventas`** (Fase 2 del plan) en cuanto esa app esté

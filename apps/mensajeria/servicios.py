@@ -63,26 +63,40 @@ def dentro_de_ventana(destinatario):
     return True
 
 
+MENSAJES_DE_BLOQUEO = {
+    DESTINATARIO_DADO_DE_BAJA: 'La persona pidió no recibir mensajes.',
+    'fuera_de_ventana': 'Sin plantilla válida y sin ventana de 24 horas abierta.',
+}
+
+
 def crear_envio(payload, sistema):
     idempotency_key = payload.get('idempotency_key_header')
+    cuerpo = payload['cuerpo']
 
     existente = Envio.objects.filter(idempotency_key=idempotency_key).first()
     if existente is not None:
-        if existente.huella_payload != huella_de(payload['cuerpo']):
+        if existente.huella_payload != huella_de(cuerpo):
             raise ErrorPasarela(
                 IDEMPOTENCIA_EN_CONFLICTO,
                 'Esa Idempotency-Key ya se usó con un contenido distinto.',
                 status=409,
             )
+        if existente.estado == Envio.Estado.BLOQUEADO:
+            # Reintento con la misma Idempotency-Key de un envío que ya
+            # estaba bloqueado (D3): se repite el mismo error, no se vuelve
+            # a evaluar nada.
+            raise ErrorPasarela(
+                existente.motivo_bloqueo,
+                MENSAJES_DE_BLOQUEO.get(existente.motivo_bloqueo, 'Envío bloqueado.'),
+                status=422,
+            )
         return existente
 
-    cuerpo = payload['cuerpo']
     destinatario = normalizar_destinatario(cuerpo.get('destinatario'))
 
     if Baja.objects.filter(destinatario=destinatario).exists():
-        return _registrar_bloqueado(
-            destinatario, cuerpo, idempotency_key, DESTINATARIO_DADO_DE_BAJA,
-        )
+        _registrar_bloqueado(destinatario, cuerpo, idempotency_key, DESTINATARIO_DADO_DE_BAJA)
+        raise ErrorPasarela(DESTINATARIO_DADO_DE_BAJA, MENSAJES_DE_BLOQUEO[DESTINATARIO_DADO_DE_BAJA], status=422)
 
     plantilla = cuerpo.get('plantilla', '')
     idioma = cuerpo.get('idioma', 'es_MX')
@@ -90,7 +104,8 @@ def crear_envio(payload, sistema):
     validar_plantilla(plantilla, idioma, variables)
 
     if not dentro_de_ventana(destinatario):
-        return _registrar_bloqueado(destinatario, cuerpo, idempotency_key, 'fuera_de_ventana')
+        _registrar_bloqueado(destinatario, cuerpo, idempotency_key, 'fuera_de_ventana')
+        raise ErrorPasarela('fuera_de_ventana', MENSAJES_DE_BLOQUEO['fuera_de_ventana'], status=422)
 
     origen = cuerpo.get('origen', {})
     envio = Envio.objects.create(

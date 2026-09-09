@@ -107,12 +107,26 @@ class PasarelaMensajeriaTests(TestCase):
 
         respuesta = self._post_envio(self._payload())
 
-        self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.json()['estado'], Envio.Estado.BLOQUEADO)
+        self.assertEqual(respuesta.status_code, 422)
+        self.assertEqual(respuesta.json()['code'], 'destinatario_dado_de_baja')
         post_mock.assert_not_called()
 
         envio = Envio.objects.get()
+        self.assertEqual(envio.estado, Envio.Estado.BLOQUEADO)
         self.assertEqual(envio.motivo_bloqueo, 'destinatario_dado_de_baja')
+
+    @patch('apps.mensajeria.meta_client.requests.post')
+    def test_reintento_de_envio_bloqueado_repite_el_mismo_error(self, post_mock):
+        Baja.objects.create(destinatario='+528442896091', origen_sistema='crm_ventas')
+
+        primera = self._post_envio(self._payload(), idempotency_key='misma-key-bloqueo')
+        segunda = self._post_envio(self._payload(), idempotency_key='misma-key-bloqueo')
+
+        self.assertEqual(primera.status_code, 422)
+        self.assertEqual(segunda.status_code, 422)
+        self.assertEqual(segunda.json()['code'], 'destinatario_dado_de_baja')
+        post_mock.assert_not_called()
+        self.assertEqual(Envio.objects.count(), 1)
 
     # -- Prueba 4: respuesta a botón de plantilla llega como webhook al sistema solicitante --
 
