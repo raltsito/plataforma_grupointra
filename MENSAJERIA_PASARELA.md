@@ -141,6 +141,36 @@ ApiKey`) y sus webhooks de salida no son variables de entorno — son filas
 de `SistemaSuscrito` en la base de datos (usar `/admin/` o una migración de
 datos, igual que los grupos de `apps/core/permisos/grupos.py`).
 
+## Conflicto de webhook con ConsultorioWeb (2026-09-09)
+
+Al preparar el guion de pruebas de humo salió un punto de arquitectura no
+anticipado: **el webhook de WhatsApp de Meta solo puede apuntar a una URL
+por App**, y ConsultorioWeb ya tiene registrado el suyo
+(`clinica/views.py::whatsapp_webhook`) para el mismo número/App que se
+iba a reutilizar en las pruebas. Registrar también el de
+`apps/mensajeria` habría cortado los webhooks de ConsultorioWeb en
+producción (estados de entrega y mensajes entrantes de la clínica).
+
+Decisión (con el usuario): **no tocar el webhook de Meta por ahora.**
+Consecuencia para el guion de pruebas de humo:
+
+- P2 (idempotencia) y P3 (bajas) se corren completas — no dependen del
+  webhook de entrada.
+- P1 se corre parcial: se valida el mensaje recibido y que la respuesta
+  HTTP trae `envio_id`/`estado: encolado`, pero el `Envio` se queda en
+  `encolado` para siempre (nunca hay un webhook de Meta que lo mueva a
+  `enviado`/`entregado`) — es el comportamiento esperado con el webhook
+  apuntando a otro lado, no un bug de `apps/mensajeria`.
+- P4 (webhook de vuelta / botones) queda pendiente hasta decidir la
+  arquitectura definitiva. Dos caminos posibles, sin decidir todavía:
+  1. Dar de alta un segundo número bajo la misma WABA (las plantillas
+     aprobadas son de la WABA, no del número, así que las tres plantillas
+     seguirían disponibles) dedicado a `apps/mensajeria`.
+  2. Migrar a la Fase "Después" del contrato: ConsultorioWeb deja de tener
+     webhook propio y se suscribe a la pasarela como cualquier otro
+     sistema — pero eso es un cambio de arquitectura en ConsultorioWeb,
+     no algo para decidir de pasada en una sesión de pruebas.
+
 ## Ajustes por el guion de pruebas de humo (paso 08, 2026-09-09)
 
 El equipo entregó un guion de 4 pruebas contra la pasarela ya desplegada
