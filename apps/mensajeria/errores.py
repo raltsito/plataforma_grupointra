@@ -29,6 +29,7 @@ JSON_INVALIDO = ErrorPasarela(
 )
 PLANTILLA_DESCONOCIDA = 'plantilla_desconocida'
 VARIABLES_INCOMPLETAS = 'variables_incompletas'
+ADJUNTO_NO_SOPORTADO = 'adjunto_no_soportado'
 DESTINATARIO_INVALIDO = 'destinatario_invalido'
 DESTINATARIO_DADO_DE_BAJA = 'destinatario_dado_de_baja'
 FUERA_DE_VENTANA = 'fuera_de_ventana'

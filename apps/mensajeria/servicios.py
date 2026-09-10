@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from . import emisor_webhooks, meta_client
 from .errores import (
+    ADJUNTO_NO_SOPORTADO,
     DESTINATARIO_DADO_DE_BAJA,
     DESTINATARIO_INVALIDO,
     ErrorPasarela,
@@ -31,7 +32,7 @@ def normalizar_destinatario(valor):
     return valor
 
 
-def validar_plantilla(nombre, idioma, variables):
+def validar_plantilla(nombre, idioma, variables, adjunto=None):
     catalogo = settings.MENSAJERIA_PLANTILLAS.get(nombre)
     if catalogo is None:
         raise ErrorPasarela(PLANTILLA_DESCONOCIDA, f'La plantilla "{nombre}" no existe o no está aprobada.')
@@ -47,6 +48,17 @@ def validar_plantilla(nombre, idioma, variables):
         raise ErrorPasarela(
             VARIABLES_INCOMPLETAS,
             f'Faltan variables requeridas por la plantilla: {", ".join(faltantes)}.',
+        )
+
+    if adjunto and not catalogo.get('admite_adjunto', False):
+        # No es que Meta lo vaya a rechazar -- es que el header de esta
+        # plantilla, tal como quedó aprobada, no tiene un parámetro de
+        # documento/imagen/video que llenar (ver el comentario del
+        # catálogo en settings.py). Mejor fallar aquí con un error claro
+        # que armar un componente que Meta va a rechazar por desajuste.
+        raise ErrorPasarela(
+            ADJUNTO_NO_SOPORTADO,
+            f'La plantilla "{nombre}" no tiene un header de adjunto aprobado en Meta.',
         )
 
 
@@ -101,7 +113,7 @@ def crear_envio(payload, sistema):
     plantilla = cuerpo.get('plantilla', '')
     idioma = cuerpo.get('idioma', 'es_MX')
     variables = cuerpo.get('variables', {})
-    validar_plantilla(plantilla, idioma, variables)
+    validar_plantilla(plantilla, idioma, variables, cuerpo.get('adjunto'))
 
     if not dentro_de_ventana(destinatario):
         _registrar_bloqueado(destinatario, cuerpo, idempotency_key, 'fuera_de_ventana')

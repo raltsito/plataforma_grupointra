@@ -451,17 +451,35 @@ MENSAJERIA_WEBHOOK_APP_SECRET = os.environ.get('MENSAJERIA_WEBHOOK_APP_SECRET', 
 # Catálogo de plantillas aprobadas por Grupo Intra (D5: la pasarela no
 # redacta, solo manda lo que ya está dado de alta aquí). Agregar una entrada
 # por cada plantilla nueva que se dé de alta en Meta Business Manager.
+# `admite_adjunto` es aparte de `variables`: dice si el header de la
+# plantilla, tal como quedó APROBADA en Meta, tiene un parámetro de
+# documento/imagen/video que llenar -- no si "debería" tenerlo. Confirmado
+# contra GET /{waba_id}/message_templates el 2026-09-10 (ver
+# MENSAJERIA_PASARELA.md): ninguna de las tres de abajo lo tiene todavía.
 MENSAJERIA_PLANTILLAS = {
-    'intra_recordatorio_cita_v1': {
-        'variables': ['1', '2', '3', '4'],
+    # No existía 'intra_recordatorio_cita_v1' en Meta (nunca se dio de
+    # alta); se usa la plantilla real ya aprobada que ConsultorioWeb ya
+    # manda con este mismo número, mismas 6 variables que
+    # clinica/services_whatsapp.py::TEMPLATE_BODIES['recordatorio_cita_3_dias']:
+    # 1=nombre, 2=fecha, 3=hora, 4=consultorio, 5=profesional, 6=servicio.
+    'recordatorio_cita_3_dias': {
+        'variables': ['1', '2', '3', '4', '5', '6'],
         'idiomas': ['es_MX'],
+        'admite_adjunto': False,
     },
     'intra_cotizacion_enviada_v1': {
         'variables': ['1', '2', '3', '4', '5'],
         'idiomas': ['es_MX'],
+        # El header quedó aprobado como texto fijo ("Documento (el PDF de
+        # la cotización)"), sin parámetro de documento -- el PDF no viaja
+        # en esta plantilla. Mandar 'adjunto' en el payload es un error
+        # de validación (ver validar_plantilla), no algo que se intente
+        # contra Meta y falle allá.
+        'admite_adjunto': False,
     },
     'intra_seguimiento_cotizacion_v1': {
         'variables': ['1', '2'],
         'idiomas': ['es_MX'],
+        'admite_adjunto': False,
     },
 }
