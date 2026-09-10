@@ -5,13 +5,9 @@ import logging
 import requests
 from django.conf import settings
 
-from .errores import ErrorPasarela, PROVEEDOR_NO_DISPONIBLE
+from .errores import ErrorPasarela, PROVEEDOR_NO_DISPONIBLE, RECHAZADO_POR_META
 
 logger = logging.getLogger(__name__)
-
-
-class MetaError(Exception):
-    pass
 
 
 def _base_url():
@@ -83,7 +79,17 @@ def enviar_plantilla(destinatario, plantilla, idioma, variables, adjunto=None):
         )
 
     if respuesta.status_code >= 400:
-        raise MetaError(f'Meta rechazó el envío ({respuesta.status_code}): {respuesta.text}')
+        # A diferencia de PROVEEDOR_NO_DISPONIBLE (Meta no respondió, sí
+        # vale la pena reintentar), esto es Meta rechazando la solicitud tal
+        # como está formada -- plantilla desconocida, variables mal armadas,
+        # etc. Reintentar con la misma Idempotency-Key va a fallar igual;
+        # el llamador necesita corregir la solicitud, no reintentarla.
+        logger.error('Meta rechazó el envío (%s): %s', respuesta.status_code, respuesta.text)
+        raise ErrorPasarela(
+            RECHAZADO_POR_META,
+            f'Meta rechazó la solicitud ({respuesta.status_code}): {respuesta.text}',
+            status=502,
+        )
 
     datos = respuesta.json()
     return datos['messages'][0]['id']

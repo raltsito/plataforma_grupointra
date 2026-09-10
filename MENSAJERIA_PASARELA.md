@@ -244,11 +244,61 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
    hacía falta al equipo, hacía falta el texto exacto del contrato. Sin
    contradicción real entre D4 y D5, no hay regla adicional que activar;
    el comportamiento actual (nunca bloquea por este motivo) es correcto.
-4. **Probar las 4 pruebas de la sección 9 contra la API real de Meta**, con
-   un número propio y credenciales de sandbox, antes de conectar cualquier
-   proceso real — las pruebas automatizadas (`apps/mensajeria/tests.py`)
-   cubren la lógica interna, no la integración real. Sigue pendiente de
-   que Carlos tenga a la mano las credenciales de sandbox.
+4. **Probar las 4 pruebas de la sección 9 contra la API real de Meta**
+   — en curso el 2026-09-10, dos hallazgos ya resueltos/documentados:
+   - **No hacía falta una sandbox separada.** `apps/mensajeria` ya está
+     configurada con las credenciales reales de producción (mismo
+     WABA/número que ConsultorioWeb, ver punto 5). Se creó un
+     `SistemaSuscrito` de prueba en producción (`nombre='prueba_humo'`,
+     vía `railway ssh` + `manage.py shell`, con el consentimiento
+     explícito de Carlos) para autenticar las llamadas de prueba.
+   - **Bug real encontrado y corregido: un rechazo de Meta al mandar la
+     plantilla (4xx, ej. plantilla desconocida) tumbaba la vista con un
+     500 en vez de responder con el formato de error del contrato.**
+     `meta_client.enviar_plantilla` solo envolvía en `ErrorPasarela` el
+     caso de "Meta no respondió" (timeout/5xx, código
+     `proveedor_no_disponible`, 502, marcado como reintentable); el caso
+     de "Meta respondió pero rechazó la solicitud" (4xx) lanzaba
+     `MetaError`, una excepción plana que nada atrapaba. Corregido: ahora
+     también es `ErrorPasarela` con código nuevo `rechazado_por_meta`
+     (502) — mismo status que `proveedor_no_disponible` porque sigue
+     siendo un problema del proveedor, pero **no es seguro reintentar con
+     la misma Idempotency-Key** (Meta va a rechazar la misma solicitud
+     otra vez; hace falta corregir la plantilla/variables, no reintentar).
+     10 pruebas en verde después del cambio (ninguna cubría este camino
+     antes).
+   - **Gap encontrado pero NO corregido a propósito (fuera de alcance de
+     hoy):** cuando `_despachar` falla (cualquiera de los dos códigos de
+     arriba), el `Envio` ya creado se queda en `estado=encolado` para
+     siempre — nada en `crear_envio` lo actualiza tras el error. Peor
+     aún: un reintento con la misma Idempotency-Key **no vuelve a llamar
+     a Meta**, `crear_envio` solo revisa si el envío existente está
+     `BLOQUEADO`; si sigue en `encolado`, lo regresa tal cual sin
+     reintentar el despacho. Esto contradice el mensaje de
+     `proveedor_no_disponible` ("puedes reintentar con la misma
+     Idempotency-Key"). Arreglarlo bien implica decidir cómo reintentar
+     el despacho de forma segura (reentrada, condición de carrera si dos
+     reintentos llegan a la vez) — no es un cambio de dos líneas, queda
+     como punto nuevo, no como parte de esta sesión.
+   - **Hallazgo de negocio, no de código: los nombres de plantilla del
+     catálogo (`intra_recordatorio_cita_v1`, `intra_cotizacion_enviada_v1`,
+     `intra_seguimiento_cotizacion_v1`) no existen como plantillas
+     aprobadas en Meta para este número.** Confirmado con un envío real
+     rechazado (`132001 Template name does not exist in the translation`).
+     Las plantillas que sí existen y están aprobadas en este WABA son las
+     que ya usa ConsultorioWeb (`clinica/services_whatsapp.py`):
+     `recordatorio_cita_5_dias`, `recordatorio_cita_3_dias`,
+     `confirmacion_cita_1_dia`, `encuesta_conformidad`,
+     `reactivacion_paciente`, más las de campañas masivas
+     (`masivos1`, etc.). El catálogo de `MENSAJERIA_PLANTILLAS` se armó
+     con los nombres de ejemplo del contrato y del guion de pruebas del
+     equipo, nunca confirmados contra Meta Business Manager (ver nota del
+     08/09 sobre este mismo riesgo, ahora comprobado). **Bloquea correr
+     P1 y P4 de la sección 9 hasta decidir con Carlos/el equipo**: ¿se
+     dan de alta y aprueban plantillas nuevas con esos nombres `intra_*`
+     en Meta Business Manager, o `MENSAJERIA_PLANTILLAS` debe apuntar a
+     los nombres ya aprobados? P2 (idempotencia) y P3 (bajas) no llaman a
+     Meta y sí se pueden correr sin resolver esto primero.
 5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto y
    verificado en producción el 2026-09-10.** Relay implementado, ambas
    variables configuradas en Railway (`MENSAJERIA_WEBHOOK_RELAY_URL` en

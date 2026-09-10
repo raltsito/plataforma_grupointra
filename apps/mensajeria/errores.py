@@ -33,6 +33,7 @@ DESTINATARIO_INVALIDO = 'destinatario_invalido'
 DESTINATARIO_DADO_DE_BAJA = 'destinatario_dado_de_baja'
 FUERA_DE_VENTANA = 'fuera_de_ventana'
 PROVEEDOR_NO_DISPONIBLE = 'proveedor_no_disponible'
+RECHAZADO_POR_META = 'rechazado_por_meta'
 IDEMPOTENCIA_EN_CONFLICTO = 'idempotencia_en_conflicto'
 ENVIO_NO_ENCONTRADO = 'envio_no_encontrado'
 
