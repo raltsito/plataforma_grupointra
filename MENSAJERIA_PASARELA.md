@@ -81,18 +81,24 @@ Todo dentro de `apps/mensajeria/`:
   `origen_entidad` / `origen_id` (texto plano, tal cual llega en el
   payload) son los campos que siempre están presentes y consultables —
   `content_type`/`object_id` quedan nulos salvo que el origen sea local.
-- **`fuera_de_ventana` está implementado pero hoy nunca dispara.** D4 dice
-  que fuera de la ventana de 24h "solo dejan pasar plantillas aprobadas".
-  D5 dice que la pasarela *solo* manda plantillas aprobadas, nunca texto
-  libre. En la API real de Meta, una plantilla aprobada se puede enviar a
-  cualquier hora — la ventana de 24h solo limita mensajes de
-  sesión/texto libre. Con D5 vigente, ese código de error queda sin caso
-  de uso real. Se dejó la tabla `UltimaInteraccion` construida y
-  actualizándose en cada webhook entrante, y `servicios.dentro_de_ventana`
-  siempre devuelve `True` con un comentario explicando por qué. **Pendiente
-  de confirmar con quien escribió el contrato**: si la intención era otra
-  regla (por ejemplo, limitar la categoría de plantilla fuera de ventana),
-  hay que ajustar esa función — hoy no bloquea nada por este motivo.
+- **`fuera_de_ventana` está implementado pero hoy nunca dispara — y así
+  debe quedarse (cerrado 2026-09-10).** Cita literal del contrato (antes
+  solo se tenía parafraseado):
+  > D4: "...fuera de la ventana solo deja pasar plantillas aprobadas..."
+  > D5: "...no se admite texto libre por la API."
+  Leídas juntas, D4 no es una regla de negocio adicional por implementar:
+  es la justificación de D5. En la plataforma de Meta, la ventana de 24h
+  solo restringe mensajes de sesión/texto libre — una plantilla aprobada
+  se manda a cualquier hora. D4 describe ese comportamiento de la
+  plataforma como el motivo de que la pasarela nunca admita texto libre
+  (D5); no describe una restricción distinta que falte. Como D5 ya
+  garantiza "solo plantillas aprobadas" de forma incondicional (no solo
+  fuera de ventana), no hay nada adicional que `dentro_de_ventana` deba
+  bloquear. Se deja la tabla `UltimaInteraccion` construida y
+  actualizándose en cada webhook entrante (sirve para trazabilidad y para
+  una eventual función futura), y `servicios.dentro_de_ventana` sigue
+  devolviendo `True` siempre, con un comentario que documenta esta
+  lectura de D4+D5 en vez de dejarlo como pregunta abierta.
 - **El HMAC del webhook saliente ahora sí copia el patrón real de
   orbita-saas (resuelto 2026-09-10).** El repo `orbita-saas`
   (`raltsito/orbita-saas`, checkout local en
@@ -233,10 +239,11 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
    encontró el checkout local de `orbita-saas` y se copió su patrón real
    (`v0=` + HMAC-SHA256 de `v0:{timestamp}:{cuerpo}`, timestamp en cabecera
    aparte). `emisor_webhooks.py` actualizado, 10 pruebas en verde.
-3. **Resolver con el equipo la duda de `fuera_de_ventana`** — sigue
-   pendiente, es una decisión de negocio que no se puede tomar por código
-   (ver decisión arriba: hoy el código está listo para cualquiera de las
-   dos respuestas, pero no se activó ninguna regla real).
+3. ~~**Resolver la duda de `fuera_de_ventana`**~~ — **Cerrado el
+   2026-09-10** (ver decisión arriba, con la cita literal de D4/D5): no
+   hacía falta al equipo, hacía falta el texto exacto del contrato. Sin
+   contradicción real entre D4 y D5, no hay regla adicional que activar;
+   el comportamiento actual (nunca bloquea por este motivo) es correcto.
 4. **Probar las 4 pruebas de la sección 9 contra la API real de Meta**, con
    un número propio y credenciales de sandbox, antes de conectar cualquier
    proceso real — las pruebas automatizadas (`apps/mensajeria/tests.py`)

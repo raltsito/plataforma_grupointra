@@ -58,8 +58,8 @@ def dentro_de_ventana(destinatario):
     de sesión/texto libre), esta función hoy siempre deja pasar el envío.
     Se deja implementada -- y `UltimaInteraccion` se sigue actualizando en
     cada webhook entrante -- para el día en que se agregue un modo de
-    mensaje de sesión; ver el punto abierto en MENSAJERIA_PASARELA.md sobre
-    esta decisión."""
+    mensaje de sesión; ver MENSAJERIA_PASARELA.md (decisión cerrada
+    2026-09-10, con la cita literal de D4/D5 del contrato)."""
     return True
 
 
