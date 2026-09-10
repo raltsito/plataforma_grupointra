@@ -280,25 +280,66 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
      el despacho de forma segura (reentrada, condición de carrera si dos
      reintentos llegan a la vez) — no es un cambio de dos líneas, queda
      como punto nuevo, no como parte de esta sesión.
-   - **Hallazgo de negocio, no de código: los nombres de plantilla del
-     catálogo (`intra_recordatorio_cita_v1`, `intra_cotizacion_enviada_v1`,
-     `intra_seguimiento_cotizacion_v1`) no existen como plantillas
-     aprobadas en Meta para este número.** Confirmado con un envío real
-     rechazado (`132001 Template name does not exist in the translation`).
-     Las plantillas que sí existen y están aprobadas en este WABA son las
-     que ya usa ConsultorioWeb (`clinica/services_whatsapp.py`):
-     `recordatorio_cita_5_dias`, `recordatorio_cita_3_dias`,
+   - **Hallazgo de negocio, ya verificado contra la API real de Meta (no
+     contra memoria de nadie): de las 3 plantillas del catálogo, 2 están
+     aprobadas y 1 nunca se creó.** Primer intento real con
+     `intra_recordatorio_cita_v1` rechazado (`132001, la plantilla no
+     existe en es_MX`). Se confirmó contra
+     `GET /{waba_id}/message_templates` (con el `MENSAJERIA_WHATSAPP_TOKEN`
+     ya configurado):
+     | Plantilla | Estado real en Meta |
+     |---|---|
+     | `intra_cotizacion_enviada_v1` | **APROBADA** (UTILITY, es_MX) |
+     | `intra_seguimiento_cotizacion_v1` | **APROBADA** (MARKETING, es_MX) |
+     | `intra_recordatorio_cita_v1` | **no existe** -- nunca se dio de alta |
+     Lo que sí existe para recordatorios es la plantilla vieja que ya usa
+     ConsultorioWeb (`recordatorio_cita_3_dias` / `_5_dias`,
      `confirmacion_cita_1_dia`, `encuesta_conformidad`,
-     `reactivacion_paciente`, más las de campañas masivas
-     (`masivos1`, etc.). El catálogo de `MENSAJERIA_PLANTILLAS` se armó
-     con los nombres de ejemplo del contrato y del guion de pruebas del
-     equipo, nunca confirmados contra Meta Business Manager (ver nota del
-     08/09 sobre este mismo riesgo, ahora comprobado). **Bloquea correr
-     P1 y P4 de la sección 9 hasta decidir con Carlos/el equipo**: ¿se
-     dan de alta y aprueban plantillas nuevas con esos nombres `intra_*`
-     en Meta Business Manager, o `MENSAJERIA_PLANTILLAS` debe apuntar a
-     los nombres ya aprobados? P2 (idempotencia) y P3 (bajas) no llaman a
-     Meta y sí se pueden correr sin resolver esto primero.
+     `reactivacion_paciente`, `clinica/services_whatsapp.py`), con una
+     estructura de variables distinta (6, no 4) a la que asume el
+     contrato para `intra_recordatorio_cita_v1`. El contenido exacto de
+     `intra_cotizacion_enviada_v1`/`intra_seguimiento_cotizacion_v1` venía
+     de un mensaje del hermano de Carlos (parte de un "mapa de
+     articulación" externo a este repo, paso 06 = capturar y mandar a
+     revisión en Meta) -- confirmado que sí se completó ese paso para
+     esas dos, no para la de recordatorio.
+   - **Dos incompatibilidades nuevas entre el código y la forma real en
+     que quedaron aprobadas estas plantillas (encontradas probando
+     `intra_seguimiento_cotizacion_v1` en vivo, P1 parcial):**
+     1. El header de `intra_cotizacion_enviada_v1` quedó aprobado como
+        **texto estático** ("Documento (el PDF de la cotización)"), no
+        como header de tipo documento con variable. `meta_client.py`
+        arma siempre un header de adjunto (documento/imagen/video) con
+        `link` cuando llega `adjunto` en el payload -- con esta
+        plantilla real eso manda un componente que la plantilla no
+        espera (rechazo por desajuste de componentes). No probado en
+        vivo todavía a propósito, para no gastar otro envío real que ya
+        se sabe que va a fallar.
+     2. `intra_seguimiento_cotizacion_v1` trae un componente
+        `CALL_PERMISSION_REQUEST` (probablemente el botón "Agendar
+        llamada" del diseño original). Probado en vivo: Meta lo rechazó
+        con `(#138000) Calling API not enabled` -- el número no tiene la
+        función de llamadas de WhatsApp habilitada en WhatsApp Manager.
+        Es configuración de la cuenta de Meta, no un bug de código; el
+        fix del 500 de arriba sí funcionó correctamente aquí (502 con
+        formato de error del contrato, sin crash).
+   - **Bloquea terminar P1 y correr P4 de la sección 9 hasta que Carlos
+     decida, con su hermano si hace falta:**
+     1. `intra_recordatorio_cita_v1`: ¿se da de alta y se manda a
+        aprobación en Meta (falta esa plantilla, sección 1 del mensaje
+        del hermano nunca se compartió completa), o `MENSAJERIA_PLANTILLAS`
+        debe apuntar a la plantilla vieja ya aprobada (con su propia
+        estructura de 6 variables, no 4)?
+     2. `intra_cotizacion_enviada_v1`: ¿se re-sube la plantilla con un
+        header de tipo documento de verdad, o el código deja de mandar
+        un adjunto para esta plantilla en particular y el PDF se
+        comparte de otra forma (link en el cuerpo, por ejemplo)?
+     3. `intra_seguimiento_cotizacion_v1`: ¿se habilita la función de
+        llamadas de WhatsApp para este número en WhatsApp Manager, o se
+        vuelve a subir la plantilla sin el componente
+        `CALL_PERMISSION_REQUEST`?
+     P2 (idempotencia) y P3 (bajas) no llaman a Meta y sí se pueden
+     correr sin resolver nada de esto primero.
 5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto y
    verificado en producción el 2026-09-10.** Relay implementado, ambas
    variables configuradas en Railway (`MENSAJERIA_WEBHOOK_RELAY_URL` en
