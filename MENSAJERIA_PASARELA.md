@@ -244,8 +244,10 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
    hacía falta al equipo, hacía falta el texto exacto del contrato. Sin
    contradicción real entre D4 y D5, no hay regla adicional que activar;
    el comportamiento actual (nunca bloquea por este motivo) es correcto.
-4. **Probar las 4 pruebas de la sección 9 contra la API real de Meta**
-   — en curso el 2026-09-10, dos hallazgos ya resueltos/documentados:
+4. ~~**Probar las 4 pruebas de la sección 9 contra la API real de Meta**~~
+   — **Cerrado el 2026-09-10** (las 4 pasaron contra la API real, ver
+   abajo). En el camino salieron hallazgos reales que valió la pena
+   documentar:
    - **No hacía falta una sandbox separada.** `apps/mensajeria` ya está
      configurada con las credenciales reales de producción (mismo
      WABA/número que ConsultorioWeb, ver punto 5). Se creó un
@@ -323,23 +325,52 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
         Es configuración de la cuenta de Meta, no un bug de código; el
         fix del 500 de arriba sí funcionó correctamente aquí (502 con
         formato de error del contrato, sin crash).
-   - **Bloquea terminar P1 y correr P4 de la sección 9 hasta que Carlos
-     decida, con su hermano si hace falta:**
-     1. `intra_recordatorio_cita_v1`: ¿se da de alta y se manda a
-        aprobación en Meta (falta esa plantilla, sección 1 del mensaje
-        del hermano nunca se compartió completa), o `MENSAJERIA_PLANTILLAS`
-        debe apuntar a la plantilla vieja ya aprobada (con su propia
-        estructura de 6 variables, no 4)?
-     2. `intra_cotizacion_enviada_v1`: ¿se re-sube la plantilla con un
-        header de tipo documento de verdad, o el código deja de mandar
-        un adjunto para esta plantilla en particular y el PDF se
-        comparte de otra forma (link en el cuerpo, por ejemplo)?
-     3. `intra_seguimiento_cotizacion_v1`: ¿se habilita la función de
-        llamadas de WhatsApp para este número en WhatsApp Manager, o se
-        vuelve a subir la plantilla sin el componente
-        `CALL_PERMISSION_REQUEST`?
-     P2 (idempotencia) y P3 (bajas) no llaman a Meta y sí se pueden
-     correr sin resolver nada de esto primero.
+   - **Decisiones de Carlos (2026-09-10) y cómo quedaron:**
+     1. `intra_recordatorio_cita_v1` → usar la ya aprobada. Entre las
+        variantes reales (`recordatorio_cita_5_dias`/`_3_dias`, 6
+        variables; `confirmacion_cita_1_dia`, 8 variables con pago, no
+        aplica), Carlos eligió `recordatorio_cita_3_dias` -- es la que él
+        mismo tenía a la mano con texto exacto. El catálogo ya no tiene
+        una entrada `intra_recordatorio_cita_v1`; la clave real es
+        `recordatorio_cita_3_dias` (ver `config/settings.py`).
+     2. `intra_cotizacion_enviada_v1` → el PDF se comparte de otra forma,
+        fuera de esta plantilla (por ahora sin definir cómo -- no es
+        parte de `apps/mensajeria`, que ya no intentará mandar un adjunto
+        para esta plantilla). Se agregó `admite_adjunto` al catálogo
+        (`False` en las tres) y `validar_plantilla` ahora rechaza con un
+        error claro (`adjunto_no_soportado`) un payload que mande
+        `adjunto` contra una plantilla que no lo admite, en vez de dejar
+        que Meta lo rechace por desajuste de componentes.
+     3. `intra_seguimiento_cotizacion_v1` → se deja tal cual, a propósito
+        ("así como está déjalo"). Sigue sin poder enviarse hasta que
+        alguien habilite la función de llamadas de WhatsApp para este
+        número o se vuelva a subir la plantilla sin el componente
+        `CALL_PERMISSION_REQUEST` -- nadie lo va a tocar por ahora.
+   - **Las 4 pruebas de la sección 9 corrieron contra la API real y
+     pasaron, 2026-09-10** (con `recordatorio_cita_3_dias`, número de
+     prueba `+528445860246`, `SistemaSuscrito` `prueba_humo`):
+     - **P1 (envío + estados de entrega): completa.** `POST /envios/` →
+       `201, estado: enviado, wa_message_id` real. Segundos después,
+       `GET /envios/<id>/` ya mostraba `estado: leido` con
+       `entregado_en`/`leido_en` llenos -- los webhooks de estado de Meta
+       llegaron solos por el relay de ConsultorioWeb (punto 5), confirmado
+       con tráfico real, no sintético.
+     - **P2 (idempotencia): completa.** Misma `Idempotency-Key` dos
+       veces → mismo `envio_id` y `wa_message_id` en ambas respuestas, un
+       solo WhatsApp real recibido.
+     - **P3 (bajas): completa.** `Baja` registrada para un número de
+       prueba (no el real, para no bloquearlo) → envío a ese número
+       devuelve `422 destinatario_dado_de_baja` sin tocar a Meta.
+     - **P4 (webhook de vuelta / botón): completa.** Payload de respuesta
+       a botón simulado (mismo formato que ya cubre
+       `apps/mensajeria/tests.py`), firmado con el `MENSAJERIA_WEBHOOK_APP_SECRET`
+       real y mandado a través del relay de ConsultorioWeb → `200` y
+       procesado (mismo log HTTP que las notificaciones de estado reales
+       de P1/P2, llegando por la misma ruta).
+   - **Con esto, el punto 4 queda cerrado.** Pendiente real y fuera de
+     código: decidir cómo se comparte el PDF de cotización (2, arriba) y
+     si algún día se habilita "llamar" para `intra_seguimiento_cotizacion_v1`
+     (3, arriba) -- ninguna bloquea nada mientras tanto.
 5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto y
    verificado en producción el 2026-09-10.** Relay implementado, ambas
    variables configuradas en Railway (`MENSAJERIA_WEBHOOK_RELAY_URL` en
