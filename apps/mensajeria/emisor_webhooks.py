@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 
 import requests
 
@@ -10,18 +11,22 @@ from .models import SistemaSuscrito
 logger = logging.getLogger(__name__)
 
 
-def _firmar(secreto, cuerpo_bytes):
-    return hmac.new(secreto.encode('utf-8'), cuerpo_bytes, hashlib.sha256).hexdigest()
+def _firmar(secreto, timestamp, cuerpo_bytes):
+    mensaje = b'v0:' + str(timestamp).encode('ascii') + b':' + cuerpo_bytes
+    return 'v0=' + hmac.new(secreto.encode('utf-8'), mensaje, hashlib.sha256).hexdigest()
 
 
 def notificar(sistema_nombre, evento, payload):
     """Avisa al sistema que solicitó un envío -- la pasarela avisa, no al
     revés (sección 6). Firma con HMAC en la cabecera, mismo patrón que
-    orbita-saas ya usa para los webhooks de Zoom (ver README de esta app:
-    no se tuvo acceso al código de orbita-saas para copiar el formato
-    exacto, así que esta firma sigue la convención más común de la industria
-    -- `X-Mensajeria-Signature: sha256=<hmac>` -- y debe revisarse contra la
-    implementación real antes de conectar un consumidor de producción)."""
+    orbita-saas usa de verdad para verificar los webhooks de Zoom
+    (`lib/zoom-webhook.ts` de ese repo: `X-<Nombre>-Signature: v0=` + hex
+    HMAC-SHA256 de `v0:{timestamp}:{cuerpo}`, más un timestamp aparte para
+    que el mensaje firmado no sea replayable). Confirmado contra ese código
+    el 2026-09-10 -- ya no es una suposición. Un consumidor debe: tomar
+    `X-Mensajeria-Timestamp`, recalcular `v0:{timestamp}:{cuerpo_crudo}` con
+    su `webhook_hmac_secret`, y comparar en tiempo constante contra
+    `X-Mensajeria-Signature`."""
 
     sistema = SistemaSuscrito.objects.filter(
         nombre=sistema_nombre, activo=True,
@@ -31,7 +36,8 @@ def notificar(sistema_nombre, evento, payload):
         return
 
     cuerpo = json.dumps({'evento': evento, 'data': payload}, sort_keys=True).encode('utf-8')
-    firma = _firmar(sistema.webhook_hmac_secret, cuerpo)
+    timestamp = int(time.time())
+    firma = _firmar(sistema.webhook_hmac_secret, timestamp, cuerpo)
 
     try:
         requests.post(
@@ -39,7 +45,8 @@ def notificar(sistema_nombre, evento, payload):
             data=cuerpo,
             headers={
                 'Content-Type': 'application/json',
-                'X-Mensajeria-Signature': f'sha256={firma}',
+                'X-Mensajeria-Signature': firma,
+                'X-Mensajeria-Timestamp': str(timestamp),
             },
             timeout=10,
         )

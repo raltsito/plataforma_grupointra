@@ -93,14 +93,21 @@ Todo dentro de `apps/mensajeria/`:
   de confirmar con quien escribió el contrato**: si la intención era otra
   regla (por ejemplo, limitar la categoría de plantilla fuera de ventana),
   hay que ajustar esa función — hoy no bloquea nada por este motivo.
-- **El HMAC del webhook saliente es una suposición, no una copia.** El
-  contrato dice que debe seguir "el mismo patrón que orbita-saas ya usa
-  para los webhooks de Zoom". No se tuvo acceso al código de orbita-saas
-  (no está en este entorno) para copiar el formato exacto. Se implementó
-  `X-Mensajeria-Signature: sha256=<hmac-sha256 del cuerpo>` — la convención
-  más estándar — pero **hay que verificarla contra la implementación real
-  de orbita-saas antes de conectar un consumidor de producción**, para que
-  ambos lados firmen y verifiquen igual.
+- **El HMAC del webhook saliente ahora sí copia el patrón real de
+  orbita-saas (resuelto 2026-09-10).** El repo `orbita-saas`
+  (`raltsito/orbita-saas`, checkout local en
+  `Downloads/ORBITA/ORBITAACADEMY/PlataformaSAAS`) sí estaba disponible —
+  no en este repo, pero sí en la máquina. Su verificación de webhooks de
+  Zoom (`lib/zoom-webhook.ts`) firma `v0:{timestamp}:{cuerpo}` con
+  HMAC-SHA256 y manda el resultado como `v0=<hex>` en la cabecera de firma,
+  más el timestamp en una cabecera aparte (`x-zm-request-timestamp`), y
+  compara en tiempo constante. `emisor_webhooks.py::notificar` ahora sigue
+  el mismo patrón: `X-Mensajeria-Signature: v0=<hex hmac-sha256 de
+  "v0:{timestamp}:{cuerpo}">` y `X-Mensajeria-Timestamp: <timestamp>`. Un
+  consumidor debe recalcular la firma con esas dos cabeceras más su
+  `webhook_hmac_secret` y comparar con `hmac.compare_digest` (o
+  equivalente). Las 10 pruebas de `apps/mensajeria/tests.py` siguen en
+  verde — ninguna verificaba el formato exacto de la cabecera.
 - **Catálogo de plantillas en `settings.MENSAJERIA_PLANTILLAS`, no en base
   de datos.** Es un diccionario en `config/settings.py` (nombre → variables
   requeridas + idiomas). Coherente con D5 ("si hace falta un mensaje nuevo,
@@ -151,25 +158,38 @@ iba a reutilizar en las pruebas. Registrar también el de
 `apps/mensajeria` habría cortado los webhooks de ConsultorioWeb en
 producción (estados de entrega y mensajes entrantes de la clínica).
 
-Decisión (con el usuario): **no tocar el webhook de Meta por ahora.**
-Consecuencia para el guion de pruebas de humo:
+Decisión (con el usuario, confirmada 2026-09-10): **el webhook de Meta
+sigue apuntando siempre a ConsultorioWeb; se comparte por relay, no se
+mueve.** ConsultorioWeb sigue siendo la única URL registrada en Meta
+Business Manager. Implementado:
 
-- P2 (idempotencia) y P3 (bajas) se corren completas — no dependen del
-  webhook de entrada.
-- P1 se corre parcial: se valida el mensaje recibido y que la respuesta
-  HTTP trae `envio_id`/`estado: encolado`, pero el `Envio` se queda en
-  `encolado` para siempre (nunca hay un webhook de Meta que lo mueva a
-  `enviado`/`entregado`) — es el comportamiento esperado con el webhook
-  apuntando a otro lado, no un bug de `apps/mensajeria`.
-- P4 (webhook de vuelta / botones) queda pendiente hasta decidir la
-  arquitectura definitiva. Dos caminos posibles, sin decidir todavía:
-  1. Dar de alta un segundo número bajo la misma WABA (las plantillas
-     aprobadas son de la WABA, no del número, así que las tres plantillas
-     seguirían disponibles) dedicado a `apps/mensajeria`.
-  2. Migrar a la Fase "Después" del contrato: ConsultorioWeb deja de tener
-     webhook propio y se suscribe a la pasarela como cualquier otro
-     sistema — pero eso es un cambio de arquitectura en ConsultorioWeb,
-     no algo para decidir de pasada en una sesión de pruebas.
+- **`ConsultorioWeb/core/settings.py`** — nueva variable
+  `MENSAJERIA_WEBHOOK_RELAY_URL` (vacía por default; sin configurar, este
+  servicio se comporta exactamente igual que antes).
+- **`ConsultorioWeb/clinica/views.py::whatsapp_webhook`** — al final del
+  procesamiento normal del POST, si `MENSAJERIA_WEBHOOK_RELAY_URL` está
+  configurada, reenvía una copia del cuerpo crudo tal cual (misma
+  `X-Hub-Signature-256` que mandó Meta, sin volver a firmar nada) a esa
+  URL vía `_relay_webhook_a_mensajeria`. Best-effort: un fallo del relay
+  (timeout, 500 del otro lado) se registra en log y no afecta el 200 que
+  ConsultorioWeb le devuelve a Meta ni su propio procesamiento.
+- **`apps/mensajeria/views.py::webhook_meta_view`** no cambió — ya
+  validaba `X-Hub-Signature-256` contra `MENSAJERIA_WEBHOOK_APP_SECRET`,
+  así que un POST relayado se procesa exactamente igual que uno directo de
+  Meta, siempre que `MENSAJERIA_WEBHOOK_APP_SECRET` en portal_grupointra
+  esté configurado con **el mismo App Secret de Meta que usa
+  ConsultorioWeb** para ese número (es el mismo App/número compartido, no
+  una app nueva) — pendiente de setear esa variable en Railway antes de
+  activar el relay en producción.
+- El handshake GET de Meta (`hub.mode=subscribe`) no se relaya —  sigue
+  pasando solo por ConsultorioWeb, como ya pasa hoy; `apps/mensajeria`
+  nunca necesita responderlo porque no es la URL registrada.
+
+Consecuencia para el guion de pruebas de humo: en cuanto
+`MENSAJERIA_WEBHOOK_RELAY_URL` esté configurada en producción, P1 (estado
+que avanza a `enviado`/`entregado`) y P4 (webhook de vuelta / botones) ya
+no dependen de un segundo número — se prueban completas contra el mismo
+webhook que ya usa ConsultorioWeb.
 
 ## Ajustes por el guion de pruebas de humo (paso 08, 2026-09-09)
 
@@ -201,22 +221,38 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
 
 ## Pendiente
 
-1. **Conectar `crm_ventas`** (Fase 2 del plan) en cuanto esa app esté
-   lista: modificar `crm_ventas/views/mensajeria.py` para llamar a
+1. **Conectar `crm_ventas`** (Fase 2 del plan) — pospuesto a propósito
+   hasta que esa app exista (decisión confirmada 2026-09-10): modificar
+   `crm_ventas/views/mensajeria.py` para llamar a
    `apps.mensajeria.servicios.crear_envio(...)` en vez de simular, y
    `crm_ventas/models.py::MensajeWhatsApp` para apuntar al `Envio` de la
    pasarela en lugar de guardar su propio estado de entrega. Dar de alta el
    `SistemaSuscrito` de `crm_ventas` (API key + webhook) antes de conectar.
-2. **Verificar la firma HMAC de salida contra orbita-saas** (ver decisión
-   arriba) antes de dar de alta un consumidor real.
-3. **Resolver con el equipo la duda de `fuera_de_ventana`** (ver decisión
-   arriba) — hoy el código está listo para cualquiera de las dos
-   respuestas, pero no se activó ninguna regla real.
+2. ~~**Verificar la firma HMAC de salida contra orbita-saas**~~ —
+   **Resuelto el 2026-09-10.** Ver la decisión de diseño arriba: se
+   encontró el checkout local de `orbita-saas` y se copió su patrón real
+   (`v0=` + HMAC-SHA256 de `v0:{timestamp}:{cuerpo}`, timestamp en cabecera
+   aparte). `emisor_webhooks.py` actualizado, 10 pruebas en verde.
+3. **Resolver con el equipo la duda de `fuera_de_ventana`** — sigue
+   pendiente, es una decisión de negocio que no se puede tomar por código
+   (ver decisión arriba: hoy el código está listo para cualquiera de las
+   dos respuestas, pero no se activó ninguna regla real).
 4. **Probar las 4 pruebas de la sección 9 contra la API real de Meta**, con
    un número propio y credenciales de sandbox, antes de conectar cualquier
    proceso real — las pruebas automatizadas (`apps/mensajeria/tests.py`)
-   cubren la lógica interna, no la integración real.
-5. ~~**Arranque en frío de ConsultorioWeb / INTRA v0.8 en Railway**~~ —
+   cubren la lógica interna, no la integración real. Sigue pendiente de
+   que Carlos tenga a la mano las credenciales de sandbox.
+5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto el
+   2026-09-10** (ver sección de arriba): se implementó el relay desde
+   ConsultorioWeb en vez de mover o duplicar el webhook. Falta un paso de
+   despliegue antes de que funcione en producción: configurar
+   `MENSAJERIA_WEBHOOK_RELAY_URL` (Railway, servicio de ConsultorioWeb) con
+   la URL pública de `apps/mensajeria`, y confirmar que
+   `MENSAJERIA_WEBHOOK_APP_SECRET` (Railway, servicio de portal_grupointra)
+   tiene el mismo App Secret de Meta que ya usa ConsultorioWeb para ese
+   número — si no coinciden, la firma del relay nunca va a validar del lado
+   de `apps/mensajeria` aunque el relay funcione bien.
+6. ~~**Arranque en frío de ConsultorioWeb / INTRA v0.8 en Railway**~~ —
    **Resuelto el 2026-09-08.** Se desactivó el sueño del servicio (`web`,
    proyecto Railway `SistemaIntra`, ambiente `production`):
    `sleep_application: false`. El contenedor ya no se duerme a los 10 min
