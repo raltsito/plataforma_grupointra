@@ -242,16 +242,20 @@ tal como quedó el 2026-09-08 aparecieron dos huecos, ya corregidos:
    proceso real — las pruebas automatizadas (`apps/mensajeria/tests.py`)
    cubren la lógica interna, no la integración real. Sigue pendiente de
    que Carlos tenga a la mano las credenciales de sandbox.
-5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto el
-   2026-09-10** (ver sección de arriba): se implementó el relay desde
-   ConsultorioWeb en vez de mover o duplicar el webhook. Falta un paso de
-   despliegue antes de que funcione en producción: configurar
-   `MENSAJERIA_WEBHOOK_RELAY_URL` (Railway, servicio de ConsultorioWeb) con
-   la URL pública de `apps/mensajeria`, y confirmar que
-   `MENSAJERIA_WEBHOOK_APP_SECRET` (Railway, servicio de portal_grupointra)
-   tiene el mismo App Secret de Meta que ya usa ConsultorioWeb para ese
-   número — si no coinciden, la firma del relay nunca va a validar del lado
-   de `apps/mensajeria` aunque el relay funcione bien.
+5. ~~**Webhook único compartido con ConsultorioWeb**~~ — **Resuelto y
+   verificado en producción el 2026-09-10.** Relay implementado, ambas
+   variables configuradas en Railway (`MENSAJERIA_WEBHOOK_RELAY_URL` en
+   `SistemaIntra`/`web`; `MENSAJERIA_WEBHOOK_APP_SECRET`,
+   `MENSAJERIA_WHATSAPP_TOKEN` y `MENSAJERIA_WHATSAPP_PHONE_NUMBER_ID` en
+   `CentralizacionIntra`, estas dos últimas espejo de las de ConsultorioWeb
+   porque es el mismo WABA/número) y ambos servicios redesplegados con el
+   código correspondiente. Probado con un POST firmado (payload vacío,
+   `entry: [{changes: [{value: {}}]}]`) contra
+   `https://www.agenda.intra.org.mx/api/whatsapp/webhook/`: el log HTTP de
+   `apps/mensajeria` en Railway confirma `POST
+   /api/mensajeria/v1/webhook-meta/ 200` en el mismo instante — el relay
+   funciona de punta a punta. Sigue pendiente la prueba con un webhook real
+   de Meta (esta solo confirma el mecanismo, no un evento real de la API).
 6. ~~**Arranque en frío de ConsultorioWeb / INTRA v0.8 en Railway**~~ —
    **Resuelto el 2026-09-08.** Se desactivó el sueño del servicio (`web`,
    proyecto Railway `SistemaIntra`, ambiente `production`):
