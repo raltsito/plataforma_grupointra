@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, ProtectedError, Sum
+from django.db.models import Count, Min, ProtectedError, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -34,15 +34,15 @@ from .models import (
     TabuladorAcademia, Unidad,
 )
 from .nomina_academia import (
-    NominaAcademiaError, capturar_nomina_academia, reabrir_nomina_academia,
-    sellar_nomina_academia, sellar_periodo_academia,
-    totales_academia, totales_periodo_academia,
+    NominaAcademiaError, capturar_nomina_academia, editar_montos_nomina_academia,
+    reabrir_periodo_academia, reabrir_nomina_academia, sellar_nomina_academia,
+    sellar_periodo_academia, totales_academia, totales_periodo_academia,
 )
 from .nomina_semanal import (
     NominaError, calcular_ingreso_generado, ingresos_generados_por_persona,
     marcar_pago, obtener_nomina, periodo_anterior, periodo_por_defecto,
-    periodo_siguiente, reabrir_periodo, sellar_linea, sellar_periodo,
-    sincronizar_nomina, totales_nomina,
+    periodo_siguiente, reabrir_linea, reabrir_periodo, sellar_linea,
+    sellar_periodo, sincronizar_nomina, totales_nomina,
 )
 from .pdfs import render_pdf
 from .reportes import (
@@ -54,6 +54,60 @@ from .totales import donativos_efectivos, egresos_efectivos, ingresos_efectivos,
 # Tope de filas de la tabla de Ingresos. No es paginación: es un freno para no
 # volcar miles de filas de golpe. La pantalla avisa cuándo está cortando.
 LIMITE_FILAS_INGRESOS = 200
+
+# Nombres completos en español para la etiqueta del mes elegido en Ingresos y
+# Egresos. LANGUAGE_CODE está en 'en-us', así que no se puede confiar en el
+# filtro |date del template para que traduzca el mes.
+MESES_ES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+
+def _rango_de_mes(request, nombre='mes'):
+    """Rango de fechas del mes elegido por `?mes=YYYY-MM`; por defecto el mes
+    en curso. Devuelve la tupla (mes_elegido, inicio, fin, etiqueta). Un valor
+    inválido cae al mes actual en vez de dejar la pantalla vacía sin explicar."""
+    hoy = timezone.now().date()
+    valor = (request.GET.get(nombre) or hoy.strftime('%Y-%m')).strip()
+    try:
+        anio, numero = (int(p) for p in valor.split('-'))
+        if not 1 <= numero <= 12:
+            anio, numero = hoy.year, hoy.month
+    except ValueError:
+        anio, numero = hoy.year, hoy.month
+    fin = date(anio, 12, 31) if numero == 12 else date(anio, numero + 1, 1) - timedelta(days=1)
+    etiqueta = f'{MESES_ES[numero - 1]} {anio}'
+    return f'{anio:04d}-{numero:02d}', date(anio, numero, 1), fin, etiqueta
+
+
+def _mes_relativo(mes, delta):
+    """Mes corrido `delta` meses antes (-1) o después (+1) de `mes` (YYYY-MM)."""
+    anio, numero = (int(p) for p in mes.split('-'))
+    numero += delta
+    while numero > 12:
+        numero, anio = numero - 12, anio + 1
+    while numero < 1:
+        numero, anio = numero + 12, anio - 1
+    return f'{anio:04d}-{numero:02d}'
+
+
+def _meses_disponibles(modelo, limite_anios=5):
+    """Meses para el selector, todos en español y validados contra los datos
+    reales: va del mes más antiguo con registros (topado a `limite_anios`) al
+    mes en curso. Usar un <select> en vez del input nativo type=month evita
+    que el navegador muestre el selector en su propio idioma (Clear, This
+    month, nombres de meses en inglés, etc.)."""
+    hoy = timezone.now().date()
+    primer_mes = modelo.objects.aggregate(minimo=Min('fecha')).get('minimo') or hoy
+    desde = primer_mes.replace(day=1)
+    desde = max(desde, date(hoy.year - limite_anios, 1, 1))
+    opciones = []
+    anio, numero = desde.year, desde.month
+    while (anio, numero) <= (hoy.year, hoy.month):
+        opciones.append((f'{anio:04d}-{numero:02d}', f'{MESES_ES[numero - 1]} {anio}'))
+        anio, numero = (anio + 1, 1) if numero == 12 else (anio, numero + 1)
+    return opciones
 
 
 def _url_conservando_filtros(request, nombre_url):
@@ -342,8 +396,10 @@ def tablero_view(request):
 def ingresos_view(request):
     hoy = timezone.now().date()
 
+    form_ingreso = IngresoForm(initial={'fecha': hoy})
     if request.method == 'POST':
-        if request.POST.get('accion') == 'estatus':
+        accion_ingreso = request.POST.get('accion')
+        if accion_ingreso == 'estatus':
             ingreso = get_object_or_404(Ingreso, pk=request.POST.get('id'))
             estatus = request.POST.get('estatus')
             try:
@@ -369,10 +425,11 @@ def ingresos_view(request):
                 )
                 messages.success(request, 'Estatus actualizado correctamente.')
             return redirect(_url_conservando_filtros(request, 'finanzas:ingresos'))
-        form_ingreso = IngresoForm(request.POST)
-        if form_ingreso.is_valid():
-            _guardar_con_bitacora(request, form_ingreso, 'Ingreso registrado correctamente.')
-            return redirect(_url_conservando_filtros(request, 'finanzas:ingresos'))
+        else:
+            form_ingreso = IngresoForm(request.POST)
+            if form_ingreso.is_valid():
+                _guardar_con_bitacora(request, form_ingreso, 'Ingreso registrado correctamente.')
+                return redirect(_url_conservando_filtros(request, 'finanzas:ingresos'))
     else:
         form_ingreso = IngresoForm(initial={'fecha': hoy})
 
@@ -381,8 +438,14 @@ def ingresos_view(request):
     # tabla los últimos 200 de cualquier fecha, así que el encabezado y las
     # filas describían periodos distintos (y con 239 ingresos en un mes, la
     # tabla ni siquiera alcanzaba a mostrar el mes que estaba resumiendo).
-    fecha_inicio = _fecha_desde_query(request, 'fecha_inicio') or hoy.replace(day=1)
-    fecha_fin = _fecha_desde_query(request, 'fecha_fin') or hoy
+    # El selector de mes, cuando se usa, tiene prioridad sobre Desde/Hasta:
+    # apunta directo a todo un mes; el rango fino queda para el otro panel.
+    mes_elegido, _, _, mes_etiqueta = _rango_de_mes(request)
+    if request.GET.get('mes'):
+        _, fecha_inicio, fecha_fin, _ = _rango_de_mes(request)
+    else:
+        fecha_inicio = _fecha_desde_query(request, 'fecha_inicio') or hoy.replace(day=1)
+        fecha_fin = _fecha_desde_query(request, 'fecha_fin') or hoy
     if fecha_inicio > fecha_fin:
         messages.error(request, 'El rango de fechas no es válido: "Desde" es posterior a "Hasta".')
         fecha_inicio, fecha_fin = hoy.replace(day=1), hoy
@@ -426,6 +489,11 @@ def ingresos_view(request):
         'total_en_rango': total_en_rango,
         'mostradas': min(total_en_rango, LIMITE_FILAS_INGRESOS),
         'hay_corte': total_en_rango > LIMITE_FILAS_INGRESOS,
+        'mes_elegido': mes_elegido,
+        'mes_etiqueta': mes_etiqueta,
+        'mes_anterior': _mes_relativo(mes_elegido, -1),
+        'mes_siguiente': _mes_relativo(mes_elegido, 1),
+        'meses_opciones': _meses_disponibles(Ingreso),
     }
     return render(request, 'finanzas/ingresos.html', contexto)
 
@@ -437,21 +505,30 @@ def egresos_view(request):
     form_egreso = EgresoForm(initial={'fecha': hoy})
 
     if request.method == 'POST':
-        if request.POST.get('accion') == 'estatus_egreso':
+        accion_egreso = request.POST.get('accion')
+        if accion_egreso == 'estatus_egreso':
             _actualizar_estatus_simple(request, Egreso, 'estatus', Egreso.Estatus.values)
             return redirect('finanzas:egresos')
-        form_egreso = EgresoForm(request.POST)
-        if form_egreso.is_valid():
-            _guardar_con_bitacora(request, form_egreso, 'Egreso registrado correctamente.')
-            return redirect('finanzas:egresos')
+        else:
+            form_egreso = EgresoForm(request.POST)
+            if form_egreso.is_valid():
+                _guardar_con_bitacora(request, form_egreso, 'Egreso registrado correctamente.')
+                return redirect('finanzas:egresos')
 
-    egresos_mes = Egreso.objects.filter(fecha__year=hoy.year, fecha__month=hoy.month).order_by('-fecha')
+    mes_elegido, fecha_inicio, fecha_fin, mes_etiqueta = _rango_de_mes(request)
+    egresos_qs = Egreso.objects.filter(fecha__gte=fecha_inicio, fecha__lte=fecha_fin)
+    egresos_mes = list(egresos_qs.order_by('-fecha'))
     contexto = {
         'vista_actual': 'egresos',
         'egresos': egresos_mes,
-        'total_egresos_periodo': _dinero(_suma(egresos_mes)),
+        'total_egresos_periodo': _dinero(_suma(egresos_qs)),
         'form_egreso': form_egreso,
         'egreso_estatus_choices': Egreso.Estatus.choices,
+        'mes_elegido': mes_elegido,
+        'mes_etiqueta': mes_etiqueta,
+        'mes_anterior': _mes_relativo(mes_elegido, -1),
+        'mes_siguiente': _mes_relativo(mes_elegido, 1),
+        'meses_opciones': _meses_disponibles(Egreso),
     }
     return render(request, 'finanzas/egresos.html', contexto)
 
@@ -480,29 +557,16 @@ def _url_nomina(tipo, inicio, fin):
     )
 
 
-def _url_nomina_academia(mes, anio):
-    """URL de la pantalla de Nómina Academia para un periodo (mes/año)."""
-    return f"{reverse('finanzas:nomina_academia')}?mes={mes}&anio={anio}"
-
-
-def _periodo_academia_adyacente(mes, anio, delta_meses):
-    """Devuelve (mes, anio) desplazado `delta_meses` meses desde mes/anio."""
-    ref = date(anio, mes, 1)
-    if delta_meses >= 0:
-        nuevo = ref
-        for _ in range(delta_meses):
-            nuevo = date(
-                nuevo.year + (1 if nuevo.month == 12 else 0),
-                (nuevo.month % 12) + 1, 1,
-            )
-    else:
-        nuevo = ref
-        for _ in range(-delta_meses):
-            nuevo = date(
-                nuevo.year - (1 if nuevo.month == 1 else 0),
-                (nuevo.month - 2) % 12 + 1, 1,
-            )
-    return nuevo.month, nuevo.year
+def _url_nomina_academia(inicio, fin, tipo=''):
+    """URL de la pantalla de Nómina Academia para un periodo de nómina,
+    expresada con el rango de fechas (igual que la Nómina)."""
+    url = (
+        f"{reverse('finanzas:nomina_academia')}"
+        f"?fecha_inicio={inicio.isoformat()}&fecha_fin={fin.isoformat()}"
+    )
+    if tipo:
+        url += f"&tipo={tipo}"
+    return url
 
 
 def _guardar_borrador_nomina(request, nomina):
@@ -640,6 +704,24 @@ def nomina_view(request):
                 mensaje = f"Nómina sellada: {resultado['selladas']} persona(s)."
                 if resultado['omitidas']:
                     mensaje += f" {resultado['omitidas']} se omitieron por estar en cero."
+                messages.success(request, mensaje)
+            except NominaError as exc:
+                messages.error(request, str(exc))
+            return redirect(destino)
+        elif accion == 'reabrir_linea':
+            # El botón "Reabrir" de una fila sellada deshace el sellado de esa
+            # sola persona (y, si el periodo entero estaba sellado, vuelve el
+            # documento a Borrador). Mismo aviso que la reapertura completa:
+            # los egresos que generó ese sellado se eliminan.
+            linea = get_object_or_404(LineaNominaSemanal, pk=request.POST.get('id'), nomina=nomina)
+            try:
+                resultado = reabrir_linea(linea, request.user)
+                mensaje = (
+                    f'{resultado["persona"]} reabierto a edición: '
+                    f'{resultado["egresos_eliminados"]} egreso(s) eliminado(s).'
+                )
+                if resultado['periodo_reabierto']:
+                    mensaje += ' El periodo volvió a Borrador porque ya no está totalmente sellado.'
                 messages.success(request, mensaje)
             except NominaError as exc:
                 messages.error(request, str(exc))
@@ -956,7 +1038,7 @@ def nomina_academia_view(request):
     por docente o por periodo completo."""
     hoy = timezone.now().date()
 
-    form = NominaAcademiaCaptureForm(initial={'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+    form = NominaAcademiaCaptureForm()
     form_maestro = MaestroForm()
     form_tabulador_academia = TabuladorAcademiaForm(initial={'vigente_desde': hoy})
 
@@ -1009,16 +1091,56 @@ def nomina_academia_view(request):
             except NominaAcademiaError as exc:
                 messages.error(request, str(exc))
             return redirect('finanzas:nomina_academia')
+        elif accion == 'editar_academia_montos':
+            nomina = get_object_or_404(NominaAcademia, pk=request.POST.get('id'))
+            try:
+                montos = {}
+                for clave, valor in request.POST.items():
+                    if clave.startswith('monto_'):
+                        try:
+                            montos[clave.removeprefix('monto_')] = Decimal(valor)
+                        except InvalidOperation:
+                            montos[clave.removeprefix('monto_')] = None
+                editar_montos_nomina_academia(nomina, montos, request.user)
+                messages.success(
+                    request,
+                    f'Montos de la nómina de {nomina.maestro} actualizados: '
+                    f'total {_dinero(nomina.total)}.',
+                )
+            except NominaAcademiaError as exc:
+                messages.error(request, str(exc))
+            return redirect('finanzas:nomina_academia')
         elif accion == 'sellar_periodo_academia':
-            mes = int(request.POST.get('periodo_mes') or hoy.month)
-            anio = int(request.POST.get('periodo_anio') or hoy.year)
+            inicio = _fecha_desde_post(request, 'fecha_inicio')
+            fin = _fecha_desde_post(request, 'fecha_fin')
+            if not (inicio and fin):
+                inicio, fin = periodo_por_defecto(hoy)
             try:
                 resultado = sellar_periodo_academia(
-                    mes, anio, request.user, _fecha_desde_post(request, 'fecha_pago'),
+                    inicio, fin, request.user, _fecha_desde_post(request, 'fecha_pago'),
                 )
-                mensaje = f"Periodo {mes}/{anio} sellado: {resultado['selladas']} docente(s)."
+                mensaje = (
+                    f'Periodo {inicio:%d/%m/%Y} al {fin:%d/%m/%Y} sellado: '
+                    f"{resultado['selladas']} docente(s)."
+                )
                 if resultado['omitidas']:
                     mensaje += f" {resultado['omitidas']} se omitieron por no tener conceptos con monto."
+                messages.success(request, mensaje)
+            except NominaAcademiaError as exc:
+                messages.error(request, str(exc))
+            return redirect('finanzas:nomina_academia')
+        elif accion == 'reabrir_periodo_academia':
+            inicio = _fecha_desde_post(request, 'fecha_inicio')
+            fin = _fecha_desde_post(request, 'fecha_fin')
+            if not (inicio and fin):
+                inicio, fin = periodo_por_defecto(hoy)
+            try:
+                resultado = reabrir_periodo_academia(inicio, fin, request.user)
+                mensaje = (
+                    f'Periodo {inicio:%d/%m/%Y} al {fin:%d/%m/%Y} reabierto a Borrador: '
+                    f"{resultado['reabiertas']} nómina(s), "
+                    f"{resultado['egresos_eliminados']} egreso(s) eliminado(s)."
+                )
                 messages.success(request, mensaje)
             except NominaAcademiaError as exc:
                 messages.error(request, str(exc))
@@ -1034,10 +1156,15 @@ def nomina_academia_view(request):
             form = NominaAcademiaCaptureForm(request.POST)
             if form.is_valid():
                 try:
+                    inicio = _fecha_desde_post(request, 'fecha_inicio')
+                    fin = _fecha_desde_post(request, 'fecha_fin')
+                    if not (inicio and fin):
+                        inicio, fin = periodo_por_defecto(hoy)
                     nomina = capturar_nomina_academia(
                         maestro=form.cleaned_data['maestro'],
-                        periodo_mes=int(form.cleaned_data['periodo_mes']),
-                        periodo_anio=form.cleaned_data['periodo_anio'],
+                        tipo=form.cleaned_data['tipo'],
+                        fecha_inicio=inicio,
+                        fecha_fin=fin,
                         metodo_pago=form.cleaned_data['metodo_pago'],
                         cantidades=form.cantidades(),
                         concepto_manual_descripcion=form.cleaned_data['concepto_manual_descripcion'],
@@ -1047,64 +1174,64 @@ def nomina_academia_view(request):
                     messages.success(
                         request,
                         f"Nómina de Academia capturada en borrador: {nomina.maestro} · "
-                        f"{nomina.periodo_mes}/{nomina.periodo_anio} · total {_dinero(nomina.total)}. "
+                        f"{nomina.get_tipo_display()} · "
+                        f'{nomina.fecha_inicio:%d/%m/%Y} al {nomina.fecha_fin:%d/%m/%Y} · '
+                        f"total {_dinero(nomina.total)}. "
                         'Revísala y séllala para generar los egresos.',
                     )
                 except (DuplicadoError, NominaAcademiaError) as exc:
                     messages.error(request, str(exc))
                 return redirect('finanzas:nomina_academia')
 
-    mes = hoy.month
-    anio = hoy.year
-    try:
-        mes_q = int(request.GET.get('mes') or '')
-        anio_q = int(request.GET.get('anio') or '')
-        if 1 <= mes_q <= 12 and 1900 <= anio_q <= 2200:
-            mes, anio = mes_q, anio_q
-    except (TypeError, ValueError):
-        pass
+    periodo_inicio = _fecha_desde_query(request, 'fecha_inicio')
+    periodo_fin = _fecha_desde_query(request, 'fecha_fin')
+    if not (periodo_inicio and periodo_fin):
+        # Por defecto el periodo en curso: la semana de nómina (viernes→jueves)
+        # que contiene a hoy, igual que la Nómina semanal/quincenal/administrativa.
+        periodo_inicio, periodo_fin = periodo_por_defecto(hoy)
+    tipo = request.GET.get('tipo', '')
+    if tipo not in NominaAcademia.Tipo.values:
+        tipo = ''
+    if tipo:
+        # El modal hereda el tipo que estás viendo en el filtro, igual que la
+        # Nómina: quien agregues se guarda bajo ese tipo.
+        form = NominaAcademiaCaptureForm(initial={'tipo': tipo})
 
     nominas = (
         NominaAcademia.objects.select_related('maestro', 'usuario_genera')
         .prefetch_related('conceptos')
-        .filter(periodo_mes=mes, periodo_anio=anio)
-        .order_by('maestro__nombre')
+        .filter(fecha_inicio=periodo_inicio, fecha_fin=periodo_fin)
     )
-    periodos = (
-        NominaAcademia.objects.values('periodo_anio', 'periodo_mes')
-        .distinct().order_by('-periodo_anio', '-periodo_mes')[:12]
-    )
-    for p in periodos:
-        p['etiqueta'] = f"{MESES_ABREV[p['periodo_mes']]} {p['periodo_anio']}"
-    totales = totales_academia(
-        NominaAcademia.objects.filter(periodo_mes=mes, periodo_anio=anio),
-    )
-    mes_ant, anio_ant = _periodo_academia_adyacente(mes, anio, -1)
-    mes_sig, anio_sig = _periodo_academia_adyacente(mes, anio, 1)
+    if tipo:
+        nominas = nominas.filter(tipo=tipo)
+    nominas = nominas.order_by('maestro__nombre')
+    totales = totales_academia(nominas)
     contexto = {
         'vista_actual': 'nomina_academia',
         'form': form,
         'form_maestro': form_maestro,
         'form_tabulador_academia': form_tabulador_academia,
         'nominas': nominas,
-        'periodos': periodos,
         'hay_borradores': any(not n.esta_sellada for n in nominas),
+        'hay_selladas': any(n.esta_sellada for n in nominas),
         'estatus_choices': NominaAcademia.Estatus.choices,
+        'tipo_choices': NominaAcademia.Tipo.choices,
+        'tipo': tipo,
         'maestros': Maestro.objects.order_by('-activo', 'nombre'),
         'tabuladores_academia': TabuladorAcademia.objects.order_by('concepto', '-vigente_desde'),
         'hoy': hoy.isoformat(),
-        'periodo_mes': mes,
-        'periodo_anio': anio,
-        'mes_actual': hoy.month,
-        'anio_actual': hoy.year,
-        'meses': [(m, MESES_ABREV[m]) for m in range(1, 13)],
-        'anios': list(range(hoy.year - 2, hoy.year + 2)),
+        'periodo_inicio': periodo_inicio,
+        'periodo_fin': periodo_fin,
+        'fecha_inicio': periodo_inicio.isoformat(),
+        'fecha_fin': periodo_fin.isoformat(),
         'totales': totales,
-        'periodo_totales': f'{MESES_ABREV[mes]} {anio}',
-        'url_anterior': _url_nomina_academia(mes_ant, anio_ant),
-        'url_siguiente': _url_nomina_academia(mes_sig, anio_sig),
-        'url_periodo_actual': _url_nomina_academia(hoy.month, hoy.year),
+        'periodo_totales': f'{periodo_inicio:%d/%m/%Y} al {periodo_fin:%d/%m/%Y}',
+        'url_anterior': _url_nomina_academia(*periodo_anterior(periodo_inicio), tipo),
+        'url_siguiente': _url_nomina_academia(*periodo_siguiente(periodo_fin), tipo),
+        'url_periodo_actual': _url_nomina_academia(*periodo_por_defecto(hoy), tipo),
     }
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return render(request, 'finanzas/nomina_academia_tabla.html', contexto)
     return render(request, 'finanzas/nomina_academia.html', contexto)
 
 
@@ -1123,27 +1250,31 @@ def nomina_academia_descargar_view(request, nomina_id):
         'total_pendiente': nomina.total if es_pendiente else Decimal('0'),
         'generado_en': timezone.now(),
     }
-    nombre_archivo = f'nomina_academia_{nomina.maestro.nombre}_{nomina.periodo_mes}_{nomina.periodo_anio}.pdf'.replace(' ', '_')
+    nombre_archivo = f'nomina_academia_{nomina.maestro.nombre}_{nomina.fecha_inicio:%Y%m%d}_{nomina.fecha_fin:%Y%m%d}.pdf'.replace(' ', '_')
     return render_pdf('finanzas/nomina_academia_pdf.html', contexto, nombre_archivo)
 
 
 @acceso_finanzas_requerido
-def nomina_academia_periodo_descargar_view(request, anio, mes):
-    """Consolidado del periodo: todos los docentes del mes en un solo
+def nomina_academia_periodo_descargar_view(request, inicio, fin):
+    """Consolidado del periodo: todos los docentes del periodo en un solo
     documento, con total por docente y total general (sección 6.1 del
     documento, "Totales")."""
-    nominas, totales = totales_periodo_academia(mes, anio)
+    inicio = date.fromisoformat(inicio)
+    fin = date.fromisoformat(fin)
+    nominas, totales = totales_periodo_academia(inicio, fin)
     totales.update(totales_academia(nominas))
+    periodo_inicio, periodo_fin = inicio, fin
     contexto = {
         'nominas': nominas,
         'totales': totales,
-        'periodo_mes': mes,
-        'periodo_anio': anio,
-        'periodo_etiqueta': f'{MESES_ABREV[mes]} {anio}' if 1 <= mes <= 12 else f'{mes}/{anio}',
+        'periodo_inicio': periodo_inicio,
+        'periodo_fin': periodo_fin,
         'usuario_genera': request.user,
         'generado_en': timezone.now(),
     }
-    nombre_archivo = f'nomina_academia_periodo_{anio}_{mes:02d}.pdf'
+    nombre_archivo = (
+        f'nomina_academia_periodo_{inicio:%Y%m%d}_{fin:%Y%m%d}.pdf'
+    )
     return render_pdf('finanzas/nomina_academia_periodo_pdf.html', contexto, nombre_archivo)
 
 

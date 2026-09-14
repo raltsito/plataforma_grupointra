@@ -49,7 +49,8 @@
         <td>
           <div class="titulo">Nómina Academia</div>
           <div class="subtitulo">
-            {{ nomina.maestro.nombre }} ({{ nomina.maestro.get_tipo_display }}) · periodo {{ nomina.periodo_mes }}/{{ nomina.periodo_anio }}<br>
+            {{ nomina.maestro.nombre }} ({{ nomina.maestro.get_tipo_display }}) · {{ nomina.get_tipo_display|lower }}<br>
+            Periodo: {{ nomina.fecha_inicio|date:'d/m/Y' }} al {{ nomina.fecha_fin|date:'d/m/Y' }}<br>
             Fecha de pago: {% if nomina.fecha_pago %}{{ nomina.fecha_pago|date:'d/m/Y' }}{% else %}por definir{% endif %}
             {% if nomina.usuario_genera %} · Generó: {{ nomina.usuario_genera.get_full_name|default:nomina.usuario_genera.username }}{% endif %}
           </div>

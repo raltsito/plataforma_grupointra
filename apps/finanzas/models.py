@@ -400,7 +400,7 @@ class Maestro(models.Model):
     class Tipo(models.TextChoices):
         MAESTRO = 'maestro', 'Maestro'
         ADMINISTRATIVO = 'administrativo', 'Administrativo'
-
+ 
     nombre = models.CharField(max_length=150)
     tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.MAESTRO)
     activo = models.BooleanField(default=True)
@@ -442,9 +442,18 @@ class TabuladorAcademia(models.Model):
 
 
 class NominaAcademia(models.Model):
-    """Cabecera de la nómina de un maestro en un periodo (mes/año). El total
-    se congela al capturar los conceptos (ver nomina_academia.py) y no
-    cambia si el tabulador se actualiza después — misma regla que Honorario."""
+    """Cabecera de la Nómina de una Persona de Academia en un periodo (un
+    rango de fechas de nómina). Sigue el mismo esquema que la Nómina semanal:
+    el periodo (viernes→jueves) y las fechas `fecha_inicio`/`fecha_fin` son
+    los mismos para todos los tipos; `tipo` distingue el ciclo de pago
+    (Mensual / Quincenal) y una persona aparece únicamente bajo el tipo con
+    el que se capturó. El total se congela al capturar los conceptos (ver
+    nomina_academia.py) y no cambia si el tabulador se actualiza después —
+    misma regla que Honorario."""
+
+    class Tipo(models.TextChoices):
+        MENSUAL = 'mensual', 'Mensual'
+        QUINCENAL = 'quincenal', 'Quincenal'
 
     class MetodoPago(models.TextChoices):
         TRANSFERENCIA = 'transferencia', 'Transferencia'
@@ -459,8 +468,10 @@ class NominaAcademia(models.Model):
         SELLADA = 'sellada', 'Sellada'
 
     maestro = models.ForeignKey(Maestro, on_delete=models.PROTECT, related_name='nominas')
-    periodo_mes = models.PositiveSmallIntegerField()
-    periodo_anio = models.PositiveSmallIntegerField()
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.MENSUAL)
+    # Rango (viernes→jueves) del periodo de nómina, igual para los tres tipos.
+    fecha_inicio = models.DateField()
+    fecha_fin = models.DateField()
     metodo_pago = models.CharField(max_length=20, choices=MetodoPago.choices, blank=True)
     estatus = models.CharField(max_length=10, choices=Estatus.choices, default=Estatus.PENDIENTE)
     # `estado` es el ciclo de vida del documento (se captura en Borrador, se
@@ -478,14 +489,14 @@ class NominaAcademia(models.Model):
     class Meta:
         verbose_name = 'Nómina Academia'
         verbose_name_plural = 'Nóminas Academia'
-        ordering = ['-periodo_anio', '-periodo_mes']
-        # Evita duplicar nómina por docente y periodo (sección 6.1 del
+        ordering = ['-fecha_fin', 'tipo']
+        # Evita duplicar nómina por persona, tipo y periodo (sección 6.1 del
         # documento); una corrección posterior es un ajuste (Fase 4), no una
         # segunda captura.
-        unique_together = ('maestro', 'periodo_mes', 'periodo_anio')
+        unique_together = ('maestro', 'tipo', 'fecha_inicio', 'fecha_fin')
 
     def __str__(self):
-        return f'{self.maestro} · {self.periodo_mes}/{self.periodo_anio}'
+        return f'{self.maestro} · {self.get_tipo_display()} · {self.fecha_inicio:%d/%m/%Y} al {self.fecha_fin:%d/%m/%Y}'
 
     @property
     def esta_sellada(self):
@@ -524,8 +535,7 @@ class ConceptoNominaAcademia(models.Model):
 
     def save(self, *args, **kwargs):
         if self._state.adding and self.concepto != self.Concepto.MANUAL:
-            fecha_ref = date(self.nomina.periodo_anio, self.nomina.periodo_mes, 1)
-            self.tabulador = TabuladorAcademia.vigente(self.concepto, fecha_ref)
+            self.tabulador = TabuladorAcademia.vigente(self.concepto, self.nomina.fecha_inicio)
             self.tarifa = self.tabulador.monto_unidad if self.tabulador else Decimal('0')
         if self._state.adding:
             self.subtotal = self.cantidad * self.tarifa

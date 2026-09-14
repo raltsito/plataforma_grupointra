@@ -51,7 +51,7 @@
         <td>
           <div class="titulo">Nómina Academia · consolidado del periodo</div>
           <div class="subtitulo">
-            Periodo: {{ periodo_etiqueta }}<br>
+            Periodo: {{ periodo_inicio|date:'d/m/Y' }} al {{ periodo_fin|date:'d/m/Y' }}<br>
             Generó: {{ usuario_genera.get_full_name|default:usuario_genera.username }}
           </div>
         </td>
