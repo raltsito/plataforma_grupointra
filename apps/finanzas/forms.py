@@ -119,18 +119,14 @@ class ReporteRecepcionUploadForm(forms.Form):
         return archivo
 
 
-_MESES = [
-    (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'), (5, 'Mayo'), (6, 'Junio'),
-    (7, 'Julio'), (8, 'Agosto'), (9, 'Septiembre'), (10, 'Octubre'), (11, 'Noviembre'), (12, 'Diciembre'),
-]
-
-
 class NominaAcademiaCaptureForm(forms.Form):
     maestro = forms.ModelChoiceField(
         queryset=Maestro.objects.filter(activo=True), widget=forms.Select(attrs=_ATTRS),
     )
-    periodo_mes = forms.ChoiceField(choices=_MESES, widget=forms.Select(attrs=_ATTRS))
-    periodo_anio = forms.IntegerField(widget=forms.NumberInput(attrs={**_ATTRS, 'min': '2020'}))
+    tipo = forms.ChoiceField(
+        choices=NominaAcademia.Tipo.choices, initial=NominaAcademia.Tipo.MENSUAL,
+        widget=forms.Select(attrs=_ATTRS),
+    )
     metodo_pago = forms.ChoiceField(
         choices=[('', 'Pendiente de asignar')] + list(NominaAcademia.MetodoPago.choices),
         required=False, widget=forms.Select(attrs=_ATTRS),
@@ -206,7 +202,7 @@ class AjusteForm(forms.Form):
     # Sin slice: ModelChoiceField valida la selección con queryset.get(pk=...),
     # y Django no permite filtrar/get sobre un queryset ya recortado con [:n].
     nomina_academia = forms.ModelChoiceField(
-        queryset=NominaAcademia.objects.select_related('maestro').order_by('-periodo_anio', '-periodo_mes'),
+        queryset=NominaAcademia.objects.select_related('maestro').order_by('-fecha_fin'),
         required=False, label='Nómina Academia a corregir', widget=forms.Select(attrs=_ATTRS),
     )
     egreso = forms.ModelChoiceField(

@@ -18,7 +18,7 @@
     <span class="fin-banner-icon">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4z"></path><path d="M4 12h16v8H4z"></path></svg>
     </span>
-    <div class="fin-banner-text"><b>La nómina se revisa en Borrador y se cierra al sellar.</b> Mientras esté en borrador puedes corregir montos, elegir método de pago y escribir observaciones. Al sellar —por persona o el periodo completo— se generan los egresos separados por concepto. Una nómina sellada se puede corregir con un Ajuste, o reabrirla a Borrador con el botón "Reabrir a borrador" (esto elimina los egresos que generó el sellado, así que revisa antes de usarlo).</div>
+    <div class="fin-banner-text"><b>La nómina se revisa en Borrador y se cierra al sellar.</b> Mientras esté en borrador puedes corregir montos, elegir método de pago y escribir observaciones. Al sellar —por persona o el periodo completo— se generan los egresos separados por concepto. Una persona sellada que se quiera corregir se reabre con su botón "Reabrir" (elimina solo los egresos de esa persona); el periodo completo se reabre con "Reabrir a borrador" (elimina todos los egresos). Revisa antes de usar cualquiera de los dos.</div>
   </div>
 
   <form method="get" class="fin-card fin-card-pad fin-filter-form">
@@ -174,6 +174,8 @@
               {% if not l.sellada and l.total > 0 %}
               <button type="submit" name="accion" value="sellar_linea" class="fin-btn-mini fin-btn-mini-activo"
                       formnovalidate onclick="document.getElementById('id-linea').value='{{ l.id }}'">Sellar</button>
+              {% elif l.sellada %}
+              <button type="button" class="fin-btn-mini" onclick="abrirReabrirLinea('{{ l.id }}')">Reabrir</button>
               {% endif %}
             </td>
           </tr>
@@ -302,6 +304,38 @@
     </div>
   </form>
 </dialog>
+{% endif %}
+
+{% if nomina %}
+<dialog id="dialog-reabrir-linea" class="fin-modal">
+  <form method="post" class="fin-modal-form">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="reabrir_linea">
+    <input type="hidden" name="id" id="reabrir-linea-id" value="">
+    <input type="hidden" name="tipo" value="{{ tipo }}">
+    <input type="hidden" name="fecha_inicio" value="{{ fecha_inicio }}">
+    <input type="hidden" name="fecha_fin" value="{{ fecha_fin }}">
+    <div class="fin-modal-header">
+      <div class="fin-card-title">Reabrir persona a edición</div>
+      <button type="button" class="fin-modal-close" onclick="this.closest('dialog').close()" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="fin-modal-grid">
+      <div class="fin-field fin-field-full">
+        <p class="fin-table-meta">Esto <b>elimina los egresos</b> que se generaron al sellar solo a esta persona y la regresa a edición. Las demás personas no se modifican. Si el egreso ya se reconcilió fuera del sistema, verifica antes de continuar.</p>
+      </div>
+    </div>
+    <div class="fin-modal-actions">
+      <button type="button" class="fin-btn-outline" onclick="this.closest('dialog').close()">Cancelar</button>
+      <button type="submit" class="fin-btn-primary fin-btn-activo">Reabrir</button>
+    </div>
+  </form>
+</dialog>
+<script>
+function abrirReabrirLinea(id) {
+  document.getElementById('reabrir-linea-id').value = id;
+  document.getElementById('dialog-reabrir-linea').showModal();
+}
+</script>
 {% endif %}
 
 {% if form_linea.errors %}

@@ -1,5 +1,3 @@
-from datetime import date
-
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
@@ -25,7 +23,7 @@ def _datos_egreso(registro):
             'persona': registro.maestro.nombre,
             'categoria': Egreso.Categoria.NOMINA_ACADEMIA,
             'unidad': Unidad.ACADEMIA,
-            'fecha': date(registro.periodo_anio, registro.periodo_mes, 1),
+            'fecha': registro.fecha_fin,
             'metodo_pago': registro.metodo_pago,
         }
     if isinstance(registro, Egreso):

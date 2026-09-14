@@ -77,8 +77,8 @@ class ConceptoNominaAcademiaInline(admin.TabularInline):
 
 @admin.register(NominaAcademia)
 class NominaAcademiaAdmin(admin.ModelAdmin):
-    list_display = ('maestro', 'periodo_mes', 'periodo_anio', 'metodo_pago', 'estatus', 'total')
-    list_filter = ('estatus', 'periodo_anio', 'periodo_mes')
+    list_display = ('maestro', 'tipo', 'fecha_inicio', 'fecha_fin', 'metodo_pago', 'estatus', 'estado', 'total')
+    list_filter = ('estatus', 'estado', 'tipo')
     readonly_fields = ('total',)
     inlines = [ConceptoNominaAcademiaInline]
 

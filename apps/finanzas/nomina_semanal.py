@@ -310,6 +310,50 @@ def sellar_periodo(nomina, usuario=None, fecha_pago=None):
 
 
 @transaction.atomic
+def reabrir_linea(linea, usuario=None):
+    """Deshace el sellado de una sola persona y la regresa a edición, sin
+    tocar al resto de la nómina. Borra los Egresos que generó ese sellado —
+    se vuelven a crear al volver a sellar; si alguno ya se reconcilió a mano
+    fuera del sistema, revisar antes de reabrir.
+
+    Si la nómina estaba sellada por completo, regresa el documento a Borrador:
+    ya no todas las personas están selladas, y de otro modo la edición de esta
+    persona quedaría bloqueada por el estado del documento."""
+    if not linea.sellada:
+        raise NominaError(f'{linea.persona} no está sellada; no hay nada que reabrir.')
+
+    egresos_eliminados = linea.egresos.all().delete()[0]
+    linea.sellada = False
+    linea.sellada_en = None
+    linea.save(update_fields=['sellada', 'sellada_en'])
+
+    registrar(
+        usuario, linea, RegistroAuditoria.Accion.MODIFICO,
+        campo='sellada', anterior=True, nuevo=False,
+        detalle=f'Reapertura de {linea.persona}: {egresos_eliminados} egreso(s) eliminado(s).',
+    )
+
+    nomina = linea.nomina
+    periodo_reabierto = False
+    if nomina.esta_sellada:
+        nomina.estado = NominaSemanal.Estado.BORRADOR
+        nomina.sellada_en = None
+        nomina.save(update_fields=['estado', 'sellada_en'])
+        periodo_reabierto = True
+        registrar(
+            usuario, nomina, RegistroAuditoria.Accion.MODIFICO,
+            campo='estado', anterior='sellada', nuevo='borrador',
+            detalle=f'Reapertura de {linea.persona}: el periodo volvió a Borrador.',
+        )
+
+    return {
+        'persona': linea.persona,
+        'egresos_eliminados': egresos_eliminados,
+        'periodo_reabierto': periodo_reabierto,
+    }
+
+
+@transaction.atomic
 def reabrir_periodo(nomina, usuario=None):
     """Deshace el sellado de una nómina y la regresa a Borrador para poder
     corregirla con el formulario normal (decisión del usuario 2026-08-28:

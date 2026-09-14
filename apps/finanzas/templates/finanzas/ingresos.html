@@ -7,6 +7,23 @@
 {% endblock %}
 
 {% block contenido %}
+<form method="get" class="fin-card fin-card-pad fin-filter-form" style="margin-bottom:10px;">
+  <div class="fin-field">
+    <label for="filtro-mes">Ver el historial de un mes</label>
+    <select id="filtro-mes" name="mes" onchange="this.form.submit()" class="fin-input">
+      {% for valor, etiqueta in meses_opciones %}
+      <option value="{{ valor }}"{% if valor == mes_elegido %} selected{% endif %}>{{ etiqueta }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="fin-field" style="justify-content:flex-end;">
+    <span class="fin-periodo-nav">
+      <a class="fin-btn-mini" href="?mes={{ mes_anterior }}" title="Mes anterior">&larr; Anterior</a>
+      <a class="fin-btn-mini" href="{% url 'finanzas:ingresos' %}" {% if not request.GET.mes %}style="opacity:.6;"{% endif %}>Mes actual</a>
+      <a class="fin-btn-mini" href="?mes={{ mes_siguiente }}" title="Mes siguiente">Siguiente &rarr;</a>
+    </span>
+  </div>
+</form>
 <form method="get" class="fin-card fin-card-pad fin-filter-form" style="margin-bottom:16px;">
   <div class="fin-field"><label for="filtro-desde">Desde</label><input type="date" id="filtro-desde" name="fecha_inicio" value="{{ fecha_inicio }}"></div>
   <div class="fin-field"><label for="filtro-hasta">Hasta</label><input type="date" id="filtro-hasta" name="fecha_fin" value="{{ fecha_fin }}"></div>
@@ -89,7 +106,7 @@
           <td>{{ row.fecha|date:"d M" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="fin-empty">No hay ingresos que coincidan con el filtro. Prueba con otro rango de fechas o con otro estatus.</td></tr>
+        <tr><td colspan="8" class="fin-empty">No hay ingresos en {{ mes_etiqueta }}. Pruébalo con <a href="{% url 'finanzas:ingresos' %}">otro mes</a>.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -16,9 +16,30 @@
     <div class="fin-banner-text"><b>Los pagos a terapeutas no se capturan aquí.</b> Se generan solos al sellar la Nómina, con el monto que ya calculó ConsultorioWeb. Esta pantalla es para los egresos que se capturan a mano: renta, servicios, insumos y demás.</div>
   </div>
 
+  <form method="get" class="fin-card fin-card-pad fin-filter-form" style="margin-bottom:16px;">
+    <div class="fin-field">
+      <label for="filtro-mes">Ver el historial de un mes</label>
+      <select id="filtro-mes" name="mes" onchange="this.form.submit()" class="fin-input">
+        {% for valor, etiqueta in meses_opciones %}
+        <option value="{{ valor }}"{% if valor == mes_elegido %} selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fin-field" style="justify-content:flex-end;">
+      <span class="fin-periodo-nav">
+        <a class="fin-btn-mini" href="?mes={{ mes_anterior }}" title="Mes anterior">&larr; Anterior</a>
+        <a class="fin-btn-mini" href="{% url 'finanzas:egresos' %}" {% if not request.GET.mes %}style="opacity:.6;"{% endif %}>Mes actual</a>
+        <a class="fin-btn-mini" href="?mes={{ mes_siguiente }}" title="Mes siguiente">Siguiente &rarr;</a>
+      </span>
+    </div>
+  </form>
+
   <div class="fin-card fin-table-card">
     <div class="fin-table-toolbar">
-      <div class="fin-card-title">Egresos del mes</div>
+      <div>
+        <div class="fin-card-title">Egresos de {{ mes_etiqueta }}</div>
+        <div class="fin-card-subtitle">{{ egresos|length }} egreso{{ egresos|length|pluralize }} en el mes. Las cifras de esta tabla son exactamente de ese mes.</div>
+      </div>
     </div>
     <div class="fin-table-wrap">
       <table class="fin-table">
@@ -59,13 +80,13 @@
             <td>{{ e.fecha|date:"d M" }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="fin-empty">Todavía no hay egresos registrados este mes.</td></tr>
+          <tr><td colspan="8" class="fin-empty">No hay egresos en {{ mes_etiqueta }}. Pruébalo con <a href="{% url 'finanzas:egresos' %}">otro mes</a>.</td></tr>
           {% endfor %}
         </tbody>
         {% if egresos %}
         <tfoot>
           <tr>
-            <td colspan="4">Total egresos del periodo</td>
+            <td colspan="4">Total egresos de {{ mes_etiqueta }}</td>
             <td class="num">{{ total_egresos_periodo }}</td>
             <td colspan="3"></td>
           </tr>

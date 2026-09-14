@@ -6,7 +6,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.auditoria.models import RegistroAuditoria
-from apps.core.auditoria.registro import registrar
+from apps.core.auditoria.registro import registrar, registrar_cambio_de_campo
 
 from .duplicados import DuplicadoError, existe_duplicado
 from .models import ConceptoNominaAcademia, Egreso, NominaAcademia, Unidad
@@ -19,12 +19,19 @@ class NominaAcademiaError(Exception):
 
 @transaction.atomic
 def capturar_nomina_academia(
-    maestro, periodo_mes, periodo_anio, metodo_pago, cantidades,
+    maestro, tipo, fecha_inicio, fecha_fin, metodo_pago, cantidades,
     concepto_manual_descripcion='', concepto_manual_monto=None, usuario=None,
 ):
-    """Crea la Nómina Academia de un maestro/periodo con sus conceptos
+    """Crea la Nómina Academia de una persona en un periodo de nómina (el
+    rango viernes→jueves, igual que la Nómina semanal) con sus conceptos
     (horas clase, supervisión, mesa de trabajo — calculados por tabulador —
     más un concepto manual autorizado opcional) y la deja en **Borrador**.
+
+    `tipo` distingue el ciclo de pago (Mensual / Quincenal). Las fechas del
+    periodo SON las mismas para ambos tipos; una persona aparece únicamente
+    bajo el tipo con el que se capturó. Si estás viendo "Quincenal" y agregas
+    una persona, queda como quincenal; si cambias a "Mensual" y agregas otra,
+    queda como mensual — exactamente como en la Nómina semanal.
 
     Los Egresos no se generan aquí: nacen al sellar (ver
     `sellar_nomina_academia`), igual que en la nómina semanal. Así se puede
@@ -32,15 +39,20 @@ def capturar_nomina_academia(
     que pide la sección 7 del documento.
 
     `cantidades` es un dict {concepto: Decimal}. Bloquea duplicar nómina para
-    el mismo maestro/periodo (sección 6.1 del documento); una corrección
+    el mismo maestro/tipo/periodo (sección 6.1 del documento); una corrección
     posterior al sellado se registra como Ajuste (ver ajustes.py)."""
-    if existe_duplicado(NominaAcademia, maestro=maestro, periodo_mes=periodo_mes, periodo_anio=periodo_anio):
+    if existe_duplicado(
+        NominaAcademia, maestro=maestro, tipo=tipo,
+        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin,
+    ):
         raise DuplicadoError(
-            f'Ya existe una nómina de Academia para {maestro} en {periodo_mes}/{periodo_anio}.'
+            f'Ya existe una nómina de Academia para {maestro} ({tipo}) '
+            f'de {fecha_inicio:%d/%m/%Y} al {fecha_fin:%d/%m/%Y}.'
         )
 
     nomina = NominaAcademia.objects.create(
-        maestro=maestro, periodo_mes=periodo_mes, periodo_anio=periodo_anio,
+        maestro=maestro, tipo=tipo,
+        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin,
         metodo_pago=metodo_pago,
         usuario_genera=usuario if getattr(usuario, 'is_authenticated', False) else None,
     )
@@ -56,8 +68,8 @@ def capturar_nomina_academia(
                 # sin que nadie se enterara.
                 raise NominaAcademiaError(
                     f'No hay un tabulador vigente para "{linea.get_concepto_display()}" en '
-                    f'{periodo_mes}/{periodo_anio}. Registra un tabulador de Academia con '
-                    '"Vigente desde" en o antes del día 1 de ese mes antes de capturar esta nómina.'
+                    f'el periodo del {fecha_inicio:%d/%m/%Y}. Registra un tabulador de Academia '
+                    'con "Vigente desde" en o antes de esa fecha antes de capturar esta nómina.'
                 )
 
     if concepto_manual_descripcion and concepto_manual_monto:
@@ -81,22 +93,31 @@ def sellar_nomina_academia(nomina, usuario=None, fecha_pago=None):
     veces: eso evita generar el pago por duplicado."""
     if nomina.esta_sellada:
         raise NominaAcademiaError(
-            f'La nómina de {nomina.maestro} de {nomina.periodo_mes}/{nomina.periodo_anio} '
-            'ya está sellada; corrígela con un Ajuste.'
+            f'La nómina de {nomina.maestro} de {nomina.fecha_inicio:%d/%m/%Y} al '
+            f'{nomina.fecha_fin:%d/%m/%Y} ya está sellada; corrígela con un Ajuste.'
         )
 
     conceptos = [c for c in nomina.conceptos.all() if c.subtotal > 0]
     if not conceptos:
         raise NominaAcademiaError('Esta nómina no tiene conceptos con monto que sellar.')
 
-    periodo_fecha = date(nomina.periodo_anio, nomina.periodo_mes, 1)
+    # Seguridad: si quedaron egresos huérfanos de un sellado anterior que no
+    # se borró correctamente (por ejemplo, edits manuales en admin), se
+    # eliminan aquí para evitar un IntegrityError por la|unique de
+    # referencia_externa.
+    egresos_previos = Egreso.objects.filter(
+        referencia_externa__startswith=f'academia:nomina:{nomina.id}:',
+    )
+    if egresos_previos.exists():
+        egresos_previos.delete()
+
     for linea in conceptos:
         etiqueta = linea.get_concepto_display()
         if linea.descripcion:
             etiqueta = f'{etiqueta} · {linea.descripcion}'
         Egreso.objects.create(
             concepto=concepto_egreso(
-                f'{etiqueta} · {nomina.maestro} · {nomina.periodo_mes}/{nomina.periodo_anio}'
+                f'{etiqueta} · {nomina.maestro} · {nomina.fecha_inicio:%d/%m/%Y} al {nomina.fecha_fin:%d/%m/%Y}'
             ),
             categoria=Egreso.Categoria.NOMINA_ACADEMIA,
             unidad=Unidad.ACADEMIA,
@@ -107,7 +128,7 @@ def sellar_nomina_academia(nomina, usuario=None, fecha_pago=None):
                 Egreso.Estatus.PAGADO if nomina.estatus == NominaAcademia.Estatus.PAGADO
                 else Egreso.Estatus.PENDIENTE
             ),
-            fecha=periodo_fecha,
+            fecha=nomina.fecha_fin,
             referencia_externa=f'academia:nomina:{nomina.id}:linea:{linea.id}',
         )
 
@@ -132,7 +153,8 @@ def reabrir_nomina_academia(nomina, usuario=None):
     sellado — se vuelven a crear al volver a sellar."""
     if not nomina.esta_sellada:
         raise NominaAcademiaError(
-            f'La nómina de {nomina.maestro} de {nomina.periodo_mes}/{nomina.periodo_anio} no está sellada.'
+            f'La nómina de {nomina.maestro} de {nomina.fecha_inicio:%d/%m/%Y} al '
+            f'{nomina.fecha_fin:%d/%m/%Y} no está sellada.'
         )
 
     borrados, _ = Egreso.objects.filter(
@@ -151,11 +173,74 @@ def reabrir_nomina_academia(nomina, usuario=None):
     return borrados
 
 
-def sellar_periodo_academia(periodo_mes, periodo_anio, usuario=None, fecha_pago=None):
-    """Sella de un golpe todas las nóminas en borrador del mes — el botón
+@transaction.atomic
+def editar_montos_nomina_academia(nomina, montos, usuario=None):
+    """Edita los montos (subtotal) de los conceptos de una nómina de Academia
+    que está en Borrador (original o reabierta). `montos` es {id_concepto:
+    Decimal}. Recorre los conceptos de la nómina y actualiza el subtotal de
+    los indicados, recalculando el total de la cabecera. Los egresos no se
+    tocan aquí: al volver a sellarla se regeneran con los montos nuevos."""
+    if nomina.esta_sellada:
+        raise NominaAcademiaError(
+            f'La nómina de {nomina.maestro} de {nomina.fecha_inicio:%d/%m/%Y} al '
+            f'{nomina.fecha_fin:%d/%m/%Y} está sellada; corrígela con un Ajuste.'
+        )
+
+    cambiado = False
+    for concepto in nomina.conceptos.all():
+        clave = str(concepto.id)
+        if clave not in montos or montos[clave] is None:
+            continue
+        nuevo = Decimal(montos[clave])
+        if nuevo < 0:
+            nuevo = Decimal('0')
+        anterior = concepto.subtotal
+        if nuevo == anterior:
+            continue
+        concepto.subtotal = nuevo
+        concepto.save(update_fields=['subtotal'])
+        registrar_cambio_de_campo(
+            usuario, concepto, 'subtotal', anterior, nuevo, etiqueta='subtotal',
+        )
+        cambiado = True
+
+    if cambiado:
+        _recalcular_total_academia(nomina)
+
+
+def _recalcular_total_academia(nomina):
+    nomina.total = sum(
+        (c.subtotal or Decimal('0') for c in nomina.conceptos.all()),
+        Decimal('0'),
+    )
+    nomina.save(update_fields=['total'])
+
+
+@transaction.atomic
+def reabrir_periodo_academia(fecha_inicio, fecha_fin, usuario=None):
+    """Reabre a Borrador todas las nóminas de Academia selladas del periodo,
+    de una sola vez (el botón "Reabrir periodo", reverso del sellado por
+    periodo). Elimina los Egresos que generó el sellado de cada una — se
+    vuelven a crear al volver a sellarla."""
+    selladas = list(NominaAcademia.objects.filter(
+        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin,
+        estado=NominaAcademia.Estado.SELLADA,
+    ))
+    if not selladas:
+        raise NominaAcademiaError('No hay nóminas de Academia selladas para ese periodo.')
+
+    reabiertas, egresos_eliminados = 0, 0
+    for nomina in selladas:
+        egresos_eliminados += reabrir_nomina_academia(nomina, usuario)
+        reabiertas += 1
+    return {'reabiertas': reabiertas, 'egresos_eliminados': egresos_eliminados}
+
+
+def sellar_periodo_academia(fecha_inicio, fecha_fin, usuario=None, fecha_pago=None):
+    """Sella de un golpe todas las nóminas en borrador del periodo — el botón
     "Sellar periodo" de la sección 7."""
     pendientes = NominaAcademia.objects.filter(
-        periodo_mes=periodo_mes, periodo_anio=periodo_anio, estado=NominaAcademia.Estado.BORRADOR,
+        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, estado=NominaAcademia.Estado.BORRADOR,
     )
     if not pendientes.exists():
         raise NominaAcademiaError('No hay nóminas de Academia en borrador para ese periodo.')
@@ -172,11 +257,11 @@ def sellar_periodo_academia(periodo_mes, periodo_anio, usuario=None, fecha_pago=
     return {'selladas': selladas, 'omitidas': omitidas}
 
 
-def totales_periodo_academia(periodo_mes, periodo_anio):
+def totales_periodo_academia(fecha_inicio, fecha_fin):
     """Totales del consolidado del periodo (sección 6.1, "Totales"): por
     docente, por método de pago, pendiente y total general."""
     nominas = list(
-        NominaAcademia.objects.filter(periodo_mes=periodo_mes, periodo_anio=periodo_anio)
+        NominaAcademia.objects.filter(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         .select_related('maestro').prefetch_related('conceptos')
     )
     return nominas, {
@@ -195,7 +280,7 @@ def totales_periodo_academia(periodo_mes, periodo_anio):
         ),
         'docentes': len(nominas),
         'conceptos': ConceptoNominaAcademia.objects.filter(
-            nomina__periodo_mes=periodo_mes, nomina__periodo_anio=periodo_anio,
+            nomina__fecha_inicio=fecha_inicio, nomina__fecha_fin=fecha_fin,
         ).aggregate(total=Sum('subtotal'))['total'] or Decimal('0'),
     }
 
