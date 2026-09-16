@@ -76,7 +76,22 @@
                 {{ c.get_concepto_display }} ({{ c.cantidad }}){% if not forloop.last %}, {% endif %}
               {% endfor %}
             </td>
-            <td>{{ n.get_metodo_pago_display|default:'Pendiente de asignar' }}</td>
+            <td>
+              {% if n.esta_sellada %}
+              {{ n.get_metodo_pago_display|default:'Pendiente de asignar' }}
+              {% else %}
+              <form method="post" class="fin-inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="metodo_academia">
+                <input type="hidden" name="id" value="{{ n.id }}">
+                <select name="metodo_pago" class="fin-input fin-input-mini" onchange="this.form.submit()">
+                  {% for valor, etiqueta in metodos_pago_choices %}
+                  <option value="{{ valor }}"{% if n.metodo_pago == valor %} selected{% endif %}>{{ etiqueta }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+              {% endif %}
+            </td>
             <td>{{ n.get_estado_display }}</td>
             <td>
               {% if n.esta_sellada %}

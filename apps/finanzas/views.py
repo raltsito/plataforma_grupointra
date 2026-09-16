@@ -142,22 +142,25 @@ def acceso_finanzas_requerido(vista):
     return wrapper
 
 
-def _actualizar_estatus_simple(request, modelo, campo_estatus, valores_validos):
-    """Cambia el campo de estatus de un registro ya existente (Egreso o
-    Donativo) desde un control inline en la tabla, sin pasar por
+def _actualizar_estatus_simple(
+    request, modelo, campo_estatus, valores_validos,
+    etiqueta='estatus', mensaje='Estatus actualizado correctamente.',
+):
+    """Cambia un campo de un registro ya existente (Egreso, Donativo,
+    NominaAcademia...) desde un control inline en la tabla, sin pasar por
     /admin/. `valores_validos` es el conjunto de choices válidos del campo;
     cualquier otro valor se rechaza en vez de guardarse a ciegas. El cambio
     queda asentado en la bitácora."""
     obj = get_object_or_404(modelo, pk=request.POST.get('id'))
     valor = request.POST.get(campo_estatus)
     if valor not in valores_validos:
-        messages.error(request, 'Estatus inválido.')
+        messages.error(request, f'{etiqueta.capitalize()} inválido.')
         return
     anterior = getattr(obj, campo_estatus)
     setattr(obj, campo_estatus, valor)
     obj.save(update_fields=[campo_estatus])
-    registrar_cambio_de_campo(request.user, obj, campo_estatus, anterior, valor, etiqueta='estatus')
-    messages.success(request, 'Estatus actualizado correctamente.')
+    registrar_cambio_de_campo(request.user, obj, campo_estatus, anterior, valor, etiqueta=etiqueta)
+    messages.success(request, mensaje)
 
 
 def _guardar_con_bitacora(request, form, mensaje):
@@ -1152,6 +1155,17 @@ def nomina_academia_view(request):
             else:
                 _actualizar_estatus_simple(request, NominaAcademia, 'estatus', NominaAcademia.Estatus.values)
             return redirect('finanzas:nomina_academia')
+        elif accion == 'metodo_academia':
+            nomina = get_object_or_404(NominaAcademia, pk=request.POST.get('id'))
+            if nomina.esta_sellada:
+                messages.error(request, 'Esta nómina ya está sellada; su método de pago no se puede modificar.')
+            else:
+                _actualizar_estatus_simple(
+                    request, NominaAcademia, 'metodo_pago',
+                    [''] + list(NominaAcademia.MetodoPago.values),
+                    etiqueta='método de pago', mensaje='Método de pago actualizado correctamente.',
+                )
+            return redirect('finanzas:nomina_academia')
         else:
             form = NominaAcademiaCaptureForm(request.POST)
             if form.is_valid():
@@ -1215,6 +1229,7 @@ def nomina_academia_view(request):
         'hay_borradores': any(not n.esta_sellada for n in nominas),
         'hay_selladas': any(n.esta_sellada for n in nominas),
         'estatus_choices': NominaAcademia.Estatus.choices,
+        'metodos_pago_choices': [('', 'Pendiente de asignar')] + list(NominaAcademia.MetodoPago.choices),
         'tipo_choices': NominaAcademia.Tipo.choices,
         'tipo': tipo,
         'maestros': Maestro.objects.order_by('-activo', 'nombre'),
