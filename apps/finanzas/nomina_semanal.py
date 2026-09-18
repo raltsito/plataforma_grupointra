@@ -408,20 +408,22 @@ def marcar_pago(linea, estatus, usuario=None):
 
 
 def totales_nomina(nomina):
-    """Los cuatro totales que pide la sección 4 del documento para poder
-    solicitar la dispersión del dinero."""
+    """Los totales que pide la sección 4 del documento para poder solicitar
+    la dispersión del dinero. Lo pendiente por dispersar (total, transferencia
+    y efectivo) NO incluye los vales de gasolina: esos se suman aparte en
+    `total_vales`. `total_general` sí trae todo (es el costo de la nómina)."""
     lineas = list(nomina.lineas.all())
     pendientes = [l for l in lineas if l.estatus_pago == LineaNominaSemanal.EstatusPago.PENDIENTE]
     return {
         'total_general': sum((l.total for l in lineas), Decimal('0')),
-        'pendiente_dispersar': sum((l.total for l in pendientes), Decimal('0')),
+        'pendiente_dispersar': sum((l.a_dispersar for l in pendientes), Decimal('0')),
         'pendiente_transferencia': sum(
-            (l.total for l in pendientes if l.metodo_pago == LineaNominaSemanal.MetodoPago.TRANSFERENCIA),
+            (l.a_dispersar for l in pendientes if l.metodo_pago == LineaNominaSemanal.MetodoPago.TRANSFERENCIA),
             Decimal('0'),
         ),
         'pendiente_efectivo': sum(
-            (l.total for l in pendientes if l.metodo_pago == LineaNominaSemanal.MetodoPago.EFECTIVO),
+            (l.a_dispersar for l in pendientes if l.metodo_pago == LineaNominaSemanal.MetodoPago.EFECTIVO),
             Decimal('0'),
         ),
-        'vales_pendientes': sum((l.vale_gasolina for l in pendientes), Decimal('0')),
+        'total_vales': sum((l.vale_gasolina for l in lineas), Decimal('0')),
     }

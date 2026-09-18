@@ -288,9 +288,9 @@ def totales_periodo_academia(fecha_inicio, fecha_fin):
 def totales_academia(nominas):
     """Los cinco totales que se muestran como KPIs en la pantalla de Nómina
     Academia, con la misma semántica que `totales_nomina` de la Nómina
-    semanal. El equivalente de "vales/extras" en Academia es el concepto
-    manual autorizado, así que se suma el importe pendiente de esos
-    conceptos."""
+    semanal. Academia no tiene vales de gasolina; `manuales_pendientes` es el
+    importe pendiente de los conceptos manuales autorizados (no confundir con
+    el "Total de vales" de la Nómina semanal)."""
     nominas = list(nominas)
     pendientes = [
         n for n in nominas if n.estatus == NominaAcademia.Estatus.PENDIENTE
@@ -313,5 +313,5 @@ def totales_academia(nominas):
             (n.total for n in pendientes if n.metodo_pago == NominaAcademia.MetodoPago.EFECTIVO),
             Decimal('0'),
         ),
-        'vales_pendientes': extras_pendientes,
+        'manuales_pendientes': extras_pendientes,
     }

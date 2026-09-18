@@ -310,8 +310,15 @@ class LineaNominaSemanal(models.Model):
         return self.pago_base + self.vale_gasolina + self.extras
 
     @property
+    def a_dispersar(self):
+        """Lo que se dispersa (transferencia o efectivo): el vale de gasolina
+        va aparte, así que no entra. Administración pidió verlos separados
+        porque sumados al total a dispersar confundían."""
+        return self.pago_base + self.extras
+
+    @property
     def pendiente(self):
-        return self.total if self.estatus_pago == self.EstatusPago.PENDIENTE else Decimal('0')
+        return self.a_dispersar if self.estatus_pago == self.EstatusPago.PENDIENTE else Decimal('0')
 
     @property
     def vale_pendiente(self):
